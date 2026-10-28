@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Deli Weekly Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+html{-webkit-text-size-adjust:100%}
+body{margin:0;font-size:15px}
+[hidden]{display:none!important}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px;z-index:50}
+.dlg form{background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:20px;width:min(460px,100%);display:flex;flex-direction:column;gap:12px}
+.dlg h2{font-family:var(--display);font-size:24px;margin:0}
+.dlg label{display:flex;flex-direction:column;gap:4px;font-size:14px;font-weight:600}
+.dlg label span{font-weight:400;color:var(--muted);font-size:12px}
+.dlg input{border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:8px 10px;font:inherit;color:inherit}
+.dlg .btns{display:flex;gap:8px;justify-content:flex-end}
+.dlg button{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:8px 14px;cursor:pointer;font:inherit;font-weight:600;color:inherit}
+.dlg button[type=submit]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.dlg .msg{font-size:13px;color:var(--warn);min-height:1.2em;margin:0}
+
+/* Layout: production-board header, 5 coloured day columns (the paper sheet), then a full product entry list for the selected day */
+:root{
+  --bg:#f3f5f6; --surface:#ffffff; --sunk:#e9edef; --line:#d5dbdf; --fg:#1d2428; --muted:#5f6b72;
+  --accent:#1f6f8b; --ok:#2f8a55; --warn:#b4541e;
+  --mon:#2f78bb; --tue:#c9403f; --wed:#7449a8; --thu:#d9801f; --fri:#3a9358;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Barlow","Segoe UI",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171a; --surface:#1a2125; --sunk:#232c31; --line:#334048; --fg:#e6ecef; --muted:#9aa7ae;
+  --accent:#5fb3d1; --ok:#5cc489; --warn:#ef9a62;
+  --mon:#5a9ee0; --tue:#e36b6a; --wed:#a07fd6; --thu:#eba04f; --fri:#62bd80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171a; --surface:#1a2125; --sunk:#232c31; --line:#334048; --fg:#e6ecef; --muted:#9aa7ae;
+  --accent:#5fb3d1; --ok:#5cc489; --warn:#ef9a62;
+  --mon:#5a9ee0; --tue:#e36b6a; --wed:#a07fd6; --thu:#eba04f; --fri:#62bd80; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.4}
+.wrap{max-width:1280px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:18px}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;border-bottom:3px solid var(--fg);padding-bottom:12px}
+.eyebrow{font-family:var(--display);font-weight:600;letter-spacing:.12em;text-transform:uppercase;font-size:13px;color:var(--muted)}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,5vw,44px);line-height:1;margin:2px 0 0;text-wrap:balance}
+.weeknav{display:flex;align-items:center;gap:6px}
+.weeknav button{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:6px 12px;cursor:pointer;font-weight:600}
+.weeknav button:hover{border-color:var(--fg)}
+.stages{display:flex;gap:4px;flex-wrap:wrap}
+.stage{font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:14px;padding:6px 12px;border-radius:6px;border:1px solid var(--line);color:var(--muted);background:transparent}
+.stage.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.stage small{font-family:var(--body);letter-spacing:0;text-transform:none;font-weight:500;opacity:.8;margin-left:4px}
+
+.banner{padding:10px 14px;border-radius:6px;border:1px solid var(--warn);color:var(--warn);background:var(--surface);font-weight:500}
+
+/* Day board */
+.board{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+.day{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;text-align:left;padding:0;min-width:0}
+.day .head{background:var(--c);color:#fff;padding:10px 12px 9px;display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.day .dn{font-family:var(--display);font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase}
+.day .dd{font-size:12px;opacity:.9;font-weight:500}
+.day .items{list-style:none;margin:0;padding:8px 12px 10px;display:flex;flex-direction:column;gap:6px;flex:1}
+.day .items li{display:flex;justify-content:space-between;gap:8px;border-left:3px solid var(--c);padding-left:8px;min-width:0}
+.day .items .nm{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.day .items .nm small{display:block;font-weight:400;color:var(--muted);font-size:12px}
+.day .items .q{font-family:var(--display);font-weight:600;font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--c)}
+.day .items .q.tbc{font-size:13px;color:var(--muted);font-family:var(--body);font-weight:500}
+.day .clear{color:var(--muted);font-size:13px;padding:4px 0}
+.day .foot{border-top:1px solid var(--line);padding:7px 12px;display:flex;justify-content:space-between;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.day .foot b{color:var(--fg)}
+.day.sel{border-color:var(--c);box-shadow:0 0 0 2px var(--c)}
+.day:hover:not(.sel){border-color:var(--c)}
+.d0{--c:var(--mon)}.d1{--c:var(--tue)}.d2{--c:var(--wed)}.d3{--c:var(--thu)}.d4{--c:var(--fri)}
+
+/* Entry panel */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column}
+.panel .ph{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:3px solid var(--c)}
+.panel h2{font-family:var(--display);font-weight:700;font-size:26px;margin:0;line-height:1}
+.panel h2 span{color:var(--c)}
+.tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tools input[type=search]{border:1px solid var(--line);background:var(--bg);border-radius:6px;padding:6px 10px;width:200px;max-width:100%}
+.tools label{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--muted);cursor:pointer}
+.cat{padding:4px 16px 10px}
+.cat h3{font-family:var(--display);font-weight:600;letter-spacing:.1em;text-transform:uppercase;font-size:14px;color:var(--muted);margin:14px 0 4px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.type{padding:16px 16px 0}
+.type h3{font-family:var(--display);font-weight:700;font-size:20px;margin:0;letter-spacing:.02em}
+.type p{margin:2px 0 0;font-size:13px;color:var(--muted)}
+.c-var{display:flex;flex-direction:column;gap:4px;min-width:0}
+.c-qty{display:flex;flex-direction:column;gap:2px;min-width:0}
+.bt{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums;min-height:1em}
+.row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 92px 76px minmax(0,1.4fr) 64px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
+.row:last-child{border-bottom:0}
+.row.has{background:linear-gradient(90deg,color-mix(in srgb,var(--c) 10%,transparent),transparent 70%)}
+.row.has .pn{color:var(--fg)}
+.row.sub .pn{visibility:hidden}
+.pn{font-weight:600;color:var(--muted);padding-left:8px;border-left:3px solid transparent;min-width:0}
+.row.has .pn{border-left-color:var(--c)}
+.pn small{display:block;font-weight:400;font-size:12px;color:var(--muted)}
+.pn .nr{color:var(--warn)}
+.row input,.row select{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);border-radius:5px;padding:6px 8px}
+.row input.qty{text-align:right;font-family:var(--display);font-weight:600;font-size:18px;padding:3px 8px;font-variant-numeric:tabular-nums}
+.row input:disabled,.row select:disabled{opacity:.6}
+.acts{display:flex;gap:4px;justify-content:flex-end}
+.acts button{width:28px;height:28px;border:1px solid var(--line);background:var(--surface);border-radius:5px;cursor:pointer;line-height:1;font-size:16px;color:var(--muted)}
+.acts button:hover{color:var(--fg);border-color:var(--fg)}
+.blank{color:var(--muted);font-size:13px}
+.empty{padding:24px 16px;color:var(--muted)}
+.status{font-size:13px;color:var(--muted);text-align:right;min-height:1.4em}
+.status.err{color:var(--warn)}
+footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;font-size:13px;color:var(--muted);text-align:center}
+
+@media (max-width:900px){
+  .board{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
+  .day{flex:0 0 min(240px,78vw);scroll-snap-align:start}
+  .row{grid-template-columns:minmax(0,1fr) 84px 70px 64px;grid-template-areas:"pn qty unit acts" "var note note note"}
+  .row .pn{grid-area:pn}.row .c-var{grid-area:var}.row .c-qty{grid-area:qty}.row .c-unit{grid-area:unit}.row .c-note{grid-area:note}.row .acts{grid-area:acts}
+  .row .c-var:empty{display:none}
+  .row.sub .pn{visibility:visible;font-size:0;border-left-color:var(--c)}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow" id="weekEyebrow">Production schedule</div>
+      <h1>Weekly Planner</h1>
+    </div>
+    <div class="weeknav">
+      <button id="prevWeek" aria-label="Previous week">‹ Prev</button>
+      <button id="thisWeek">This week</button>
+      <button id="nextWeek" aria-label="Next week">Next ›</button>
+      <button id="openSettings" aria-label="Settings">Settings</button>
+    </div>
+  </header>
+
+  <nav class="stages" aria-label="Planning stages">
+    <span class="stage on">1 · Plan</span>
+    <span class="stage">2 · Elements <small>next</small></span>
+    <span class="stage">3 · Tick lists <small>next</small></span>
+  </nav>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <section class="board" id="board" aria-label="Days of the week"></section>
+
+  <section class="panel" id="panel">
+    <div class="ph">
+      <h2 id="panelTitle"></h2>
+      <div class="tools">
+        <input type="search" id="search" placeholder="Find a product" aria-label="Find a product">
+        <label><input type="checkbox" id="plannedOnly"> Planned only</label>
+      </div>
+    </div>
+    <div id="entries"></div>
+  </section>
+  <div class="status" id="status"></div>
+  <footer>Plan · Produce · Pack · Deliver</footer>
+</div>
+
+
+<div class="dlg" id="settings" hidden>
+  <form id="cfgForm" autocomplete="off">
+    <h2>Connect this device</h2>
+    <label for="cfgUrl">API address<span>The Web app URL from Apps Script, ending in /exec</span><input id="cfgUrl" type="url" placeholder="https://script.google.com/macros/s/…/exec"></label>
+    <label for="cfgKey">Device key<span>The DEVICE_KEY set in Apps Script</span><input id="cfgKey" type="password"></label>
+    <label for="cfgPin">Edit PIN<span>Yehuda and Eli only. Leave blank on staff tablets.</span><input id="cfgPin" type="password" inputmode="numeric"></label>
+    <p class="msg" id="cfgMsg"></p>
+    <div class="btns"><button type="button" id="cfgCancel">Cancel</button><button type="submit">Save and connect</button></div>
+  </form>
+</div>
+
+<script>
+/* ---------- Product catalogue (from the deli's recipe sheets) ---------- */
+/* Planning categories: minced = kg of meat block (meat + skin + water + ice + fat); whole = kg of green weight (pre-injection) */
+const TYPES={minced:{name:"Minced products",basis:"meat block",hint:"Quantity = kg of meat block (meat + skin + water + ice + fat)"},
+             whole:{name:"Whole muscle products",basis:"green weight",hint:"Quantity = kg of green weight (before injection)"}};
+const CATS=[
+  ["sausage","Frankfurters & sausages","minced"],
+  ["salami","Salami & aufschnitt","minced"],
+  ["beef","Beef","whole"],
+  ["poultry","Poultry","whole"]
+];
+const CATTYPE=Object.fromEntries(CATS.map(c=>[c[0],c[2]]));
+const TUMBLER_MAX=150; // kg per tumbler batch
+const STAGES=["Brine / inject","Prep & cook"];
+function splitBatches(kg){if(!(kg>0))return null;const n=Math.ceil(kg/TUMBLER_MAX-1e-9);return {n,each:kg/n}}
+function batchText(l){if((l.unit||"kg")!=="kg")return "";const b=splitBatches(+l.qty);if(!b)return "";
+  return b.n===1?"1 batch":b.n+" × "+fmt(Math.round(b.each*100)/100)+" kg"}
+const PRODUCTS=[
+  {id:"franks",cat:"sausage",name:"Franks",sub:"150kg batch",variants:["Fresh flank","Fresh trim","Defrosted flank"]},
+  {id:"chilli_franks",cat:"sausage",name:"Chilli franks",sub:"Franks base + chilli",variants:["Fresh flank","Fresh trim","Defrosted flank"]},
+  {id:"double_smoked",cat:"sausage",name:"Double smoked franks",sub:"80 / 60kg batch"},
+  {id:"gk_franks",cat:"sausage",name:"GK franks",sub:"40kg batch",variants:["Option 1 · fatty trim","Option 2 · lean + fat"]},
+  {id:"viennas",cat:"sausage",name:"Viennas (GK)",sub:"40kg batch"},
+  {id:"bratwurst",cat:"sausage",name:"Bratwurst",sub:"60 / 40kg batch"},
+  {id:"kielbasa",cat:"sausage",name:"Kielbasa",sub:"20kg batch"},
+  {id:"cumberland",cat:"sausage",name:"Cumberland",sub:"20kg batch"},
+  {id:"liverwurst",cat:"sausage",name:"Liverwurst",sub:"30 / 40kg batch"},
+
+  {id:"beef_salami",cat:"salami",name:"Beef salami",sub:"100 / 120kg batch"},
+  {id:"turkey_salami",cat:"salami",name:"Turkey salami",sub:"90 / 150kg batch"},
+  {id:"chicken_salami",cat:"salami",name:"Chicken salami",sub:"120 / 140kg batch"},
+  {id:"wurst",cat:"salami",name:"Wurst",sub:"60kg batch"},
+  {id:"hungarian",cat:"salami",name:"Hungarian / Krakowska",sub:"25kg batch"},
+  {id:"chorizo",cat:"salami",name:"Chorizo",sub:"25kg batch"},
+  {id:"hasselback",cat:"salami",name:"Hasselback salami",sub:"Per wurst",unit:"pcs"},
+  {id:"square_aufschnitt",cat:"salami",name:"Square aufschnitt",sub:"14-press batch"},
+  {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg batch",variants:["Half pepper · half olive","All pepper","All olive"]},
+
+  {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",variants:["60L brine","Downstairs brine"]},
+  {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup"},
+  {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup"},
+  {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine"},
+  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"No recipe sheet yet",norecipe:true},
+  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure"},
+  {id:"rib_eye",cat:"beef",name:"Rib eye",sub:"Sous vide 6–8 hrs"},
+  {id:"london_broil",cat:"beef",name:"London broil",sub:"Sous vide 24 hrs"},
+
+  {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine"},
+  {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine"},
+  {id:"turkey_drumsticks",cat:"poultry",name:"Turkey drumsticks",sub:"Smoked · 50L brine"},
+  {id:"cajun_turkey",cat:"poultry",name:"Cajun turkey",sub:"Sous vide 24 hrs"}
+];
+const PMAP=Object.fromEntries(PRODUCTS.map(p=>[p.id,p]));
+const UNITS=["kg","pcs","batch","box"];
+const DAYS=[["mon","Monday"],["tue","Tuesday"],["wed","Wednesday"],["thu","Thursday"],["fri","Friday"]];
+const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+/* ---------- Dates ---------- */
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function parseIso(s){const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d)}
+function addDays(d,n){const x=new Date(d);x.setDate(x.getDate()+n);return x}
+function defaultMonday(){const t=new Date();t.setHours(0,0,0,0);const wd=t.getDay();
+  if(wd===0)return addDays(t,1); if(wd===6)return addDays(t,2); if(wd===5)return addDays(t,3); return addDays(t,1-wd)}
+function weekLabel(mon){const fri=addDays(mon,4);
+  if(mon.getMonth()===fri.getMonth())return mon.getDate()+"–"+fri.getDate()+" "+MONTHS[mon.getMonth()]+" "+mon.getFullYear();
+  return mon.getDate()+" "+MONTHS[mon.getMonth()].slice(0,3)+" – "+fri.getDate()+" "+MONTHS[fri.getMonth()].slice(0,3)+" "+fri.getFullYear()}
+
+/* ---------- State ---------- */
+let monday=defaultMonday();
+let weekId=iso(monday);
+let selDay=0;
+let plan={days:{}};          // current week's doc body
+const pending=new Map();     // key `${week}|${day}|${lineId}` -> line or null
+let db=null, ref=null, unsub=null, readOnly=false, localMode=false, writing=false, timer=null;
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>Number.isInteger(n)?String(n):String(Math.round(n*100)/100);
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch(e){return null}}
+
+try{const d=ls("deli.selDay");if(d!==null&&+d>=0&&+d<5)selDay=+d}catch(e){}
+
+function linesFor(day){const l=(plan.days?.[day]?.lines)||{};
+  return Object.entries(l).filter(([,v])=>v&&typeof v==="object").map(([id,v])=>({id,...v})).sort((a,b)=>(a.o||0)-(b.o||0))}
+function isReal(l){return (l.qty!==null&&l.qty!==""&&l.qty!==undefined&&+l.qty>0)||(l.note&&l.note.trim())}
+
+/* ---------- Render ---------- */
+function renderBoard(){
+  $("weekEyebrow").textContent="Production schedule · w/c "+weekLabel(monday);
+  $("board").innerHTML=DAYS.map(([k,name],i)=>{
+    const ls_=linesFor(k).filter(isReal);
+    const byCat=CATS.flatMap(([c])=>ls_.filter(l=>PMAP[l.p]?.cat===c));
+    let kg=0;ls_.forEach(l=>{if((l.unit||"kg")==="kg"&&+l.qty>0)kg+=+l.qty});
+    const items=byCat.length?byCat.map(l=>{const p=PMAP[l.p]||{name:l.p};
+      const isWhole=CATTYPE[p.cat]==="whole";
+      const extra=[isWhole?(l.st||STAGES[0]):null,l.v,+l.qty>0?batchText(l):null,l.note].filter(Boolean).join(" · ");
+      const q=+l.qty>0?`<span class="q">${fmt(+l.qty)} ${esc(l.unit||"kg")}</span>`:`<span class="q tbc">qty TBC</span>`;
+      return `<li><span class="nm">${esc(p.name)}${extra?`<small>${esc(extra)}</small>`:""}</span>${q}</li>`}).join("")
+      :`<li class="clear" style="border:0;padding:0">Nothing planned</li>`;
+    return `<button class="day d${i}${i===selDay?" sel":""}" data-day="${i}" aria-pressed="${i===selDay}">
+      <div class="head"><span class="dn">${name}</span><span class="dd">${addDays(monday,i).getDate()} ${MONTHS[addDays(monday,i).getMonth()].slice(0,3)}</span></div>
+      <ul class="items">${items}</ul>
+      <div class="foot"><span><b>${ls_.length}</b> line${ls_.length===1?"":"s"}</span><span><b>${fmt(kg)}</b> kg</span></div>
+    </button>`}).join("");
+}
+
+function rowHtml(p,l,isFirst,dayKey){
+  const id=l?l.id:"new-"+p.id;
+  const dis=readOnly?" disabled":"";
+  const isWhole=CATTYPE[p.cat]==="whole";
+  const stSel=isWhole?`<select id="s-${id}" data-f="st" aria-label="${esc(p.name)} stage"${dis}>${STAGES.map(s=>`<option${(l?.st||STAGES[0])===s?" selected":""}>${esc(s)}</option>`).join("")}</select>`:"";
+  const vSel=stSel+(p.variants?`<select id="v-${id}" data-f="v" aria-label="${esc(p.name)} recipe"${dis}>${p.variants.map(v=>`<option${(l?.v||p.variants[0])===v?" selected":""}>${esc(v)}</option>`).join("")}</select>`:"");
+  const bt=l&&+l.qty>0?batchText(l):"";
+  const unit=l?.unit||p.unit||"kg";
+  const has=l&&isReal(l);
+  const acts=readOnly?"":(l?`<button data-act="add" data-p="${p.id}" title="Add another ${esc(p.name)} line" aria-label="Add another line">+</button><button data-act="del" title="Remove line" aria-label="Remove line">×</button>`:"");
+  return `<div class="row${has?" has":""}${isFirst?"":" sub"}" data-line="${id}" data-p="${p.id}">
+    <div class="pn">${esc(p.name)}<small${p.norecipe?' class="nr"':""}>${esc(p.sub)}</small></div>
+    <div class="c-var">${vSel}</div>
+    <div class="c-qty"><input class="qty" id="q-${id}" data-f="qty" inputmode="decimal" placeholder="—" value="${l&&l.qty!==null&&l.qty!==undefined?esc(l.qty):""}" aria-label="${esc(p.name)} quantity"${dis}><span class="bt" id="b-${id}">${esc(bt)}</span></div>
+    <div class="c-unit"><select id="u-${id}" data-f="unit" aria-label="Unit"${dis}>${UNITS.map(u=>`<option${u===unit?" selected":""}>${u}</option>`).join("")}</select></div>
+    <div class="c-note"><input id="n-${id}" data-f="note" placeholder="Note" value="${esc(l?.note||"")}" aria-label="${esc(p.name)} note"${dis}></div>
+    <div class="acts">${acts}</div>
+  </div>`}
+
+function renderEntries(){
+  const [k,name]=DAYS[selDay];
+  const panel=$("panel");panel.className="panel d"+selDay;
+  $("panelTitle").innerHTML=`<span>${name}</span> · ${addDays(monday,selDay).getDate()} ${MONTHS[addDays(monday,selDay).getMonth()]}`;
+  const q=$("search").value.trim().toLowerCase();
+  const only=$("plannedOnly").checked;
+  const lines=linesFor(k);
+  let html="";let lastType=null;
+  for(const [c,cname,ctype] of CATS){
+    if(ctype!==lastType){lastType=ctype;html+=`<div class="type"><h3>${TYPES[ctype].name}</h3><p>${TYPES[ctype].hint}. Over ${TUMBLER_MAX}kg splits into equal tumbler batches.</p></div>`}
+    let rows="";
+    for(const p of PRODUCTS.filter(p=>p.cat===c)){
+      if(q&&!(p.name+" "+p.sub).toLowerCase().includes(q))continue;
+      const pl=lines.filter(l=>l.p===p.id);
+      if(only&&!pl.some(isReal))continue;
+      if(pl.length)pl.forEach((l,i)=>rows+=rowHtml(p,l,i===0,k));
+      else rows+=rowHtml(p,null,true,k);
+    }
+    if(rows)html+=`<div class="cat"><h3>${cname}</h3>${rows}</div>`;
+  }
+  // focus preservation
+  const ae=document.activeElement;const fid=ae&&ae.id&&$("entries").contains(ae)?ae.id:null;
+  const ss=fid&&ae.selectionStart!=null?[ae.selectionStart,ae.selectionEnd]:null;
+  $("entries").innerHTML=html||`<div class="empty">${only?"Nothing planned for "+name+" yet. Untick “Planned only” to see every product.":"No products match “"+esc(q)+"”."}</div>`;
+  if(fid){const el=$(fid);if(el){el.focus();if(ss&&el.setSelectionRange)try{el.setSelectionRange(ss[0],ss[1])}catch(e){}}}
+}
+function render(){renderBoard();renderEntries()}
+
+/* ---------- Editing ---------- */
+function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
+function dayLines(k){plan.days=plan.days||{};plan.days[k]=plan.days[k]||{lines:{}};plan.days[k].lines=plan.days[k].lines||{};return plan.days[k].lines}
+
+function onField(e){
+  const el=e.target;const f=el.dataset.f;if(!f)return;
+  const row=el.closest(".row");const k=DAYS[selDay][0];const lines=dayLines(k);
+  let id=row.dataset.line;const p=PMAP[row.dataset.p];
+  if(id.startsWith("new-")){
+    if(f!=="qty"&&f!=="note")return; // changing unit/variant on a blank row waits until something is entered
+    if(!el.value.trim())return;
+    const nid=newId();
+    const maxO=Math.max(0,...Object.values(lines).filter(Boolean).map(l=>l.o||0));
+    lines[nid]={p:p.id,qty:null,unit:row.querySelector('[data-f=unit]').value,v:row.querySelector('[data-f=v]')?.value||null,st:row.querySelector('[data-f=st]')?.value||null,note:"",o:maxO+1};
+    row.dataset.line=nid;
+    row.querySelectorAll("[id]").forEach(x=>x.id=x.id.replace("new-"+p.id,nid));
+    id=nid;
+  }
+  const line=lines[id];if(!line)return;
+  if(f==="qty"){const v=el.value.replace(",",".").trim();line.qty=v===""?null:(isNaN(+v)?line.qty:+v)}
+  else line[f]=el.value;
+  row.classList.toggle("has",isReal(line));
+  const btEl=row.querySelector(".bt");if(btEl)btEl.textContent=+line.qty>0?batchText(line):"";
+  queue(k,id,isReal(line)||e.type!=="change"?{...line}:{...line});
+  renderBoard();
+}
+function removeLine(id){
+  const k=DAYS[selDay][0];const lines=dayLines(k);
+  lines[id]=null;queue(k,id,null);render();
+}
+function addLine(pid){
+  const k=DAYS[selDay][0];const lines=dayLines(k);const p=PMAP[pid];
+  const maxO=Math.max(0,...Object.values(lines).filter(Boolean).map(l=>l.o||0));
+  const nid=newId();lines[nid]={p:pid,qty:null,unit:p.unit||"kg",v:p.variants?p.variants[0]:null,st:CATTYPE[p.cat]==="whole"?STAGES[0]:null,note:"",o:maxO+1};
+  queue(k,nid,{...lines[nid]});render();$("q-"+nid)?.focus();
+}
+
+/* ---------- Persistence (Google Apps Script backend) ----------
+   Connection settings live on each device (never in this public repo):
+   API URL + device key (+ edit PIN for Yehuda / Eli). */
+const CFG_KEY="deli.config";
+function getCfg(){try{return JSON.parse(ls(CFG_KEY)||"{}")}catch(e){return {}}}
+function setCfg(c){ls(CFG_KEY,JSON.stringify(c))}
+let cfg=getCfg(), pollTimer=null, lastTyping=0;
+
+function setStatus(t,err){const s=$("status");s.textContent=t;s.classList.toggle("err",!!err)}
+function queue(day,id,val){lastTyping=Date.now();pending.set(weekId+"|"+day+"|"+id,val);setStatus("Saving…");clearTimeout(timer);timer=setTimeout(flush,700)}
+
+async function api(action,params,body){
+  if(!cfg.url)throw {code:"no_config"};
+  if(body){
+    const r=await fetch(cfg.url,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({action,key:cfg.key,pin:cfg.pin||"",...body})});
+    const j=await r.json();if(!j.ok)throw j;return j;
+  }
+  const q=new URLSearchParams({action,key:cfg.key||"",...params});
+  const r=await fetch(cfg.url+(cfg.url.includes("?")?"&":"?")+q.toString());
+  const j=await r.json();if(!j.ok)throw j;return j;
+}
+
+async function flush(){
+  clearTimeout(timer);
+  if(writing){timer=setTimeout(flush,300);return}
+  if(!pending.size)return;
+  if(readOnly){pending.clear();return}
+  writing=true;
+  const batch=new Map(pending);pending.clear();
+  const byWeek={};
+  for(const [key,val] of batch){const [w,d,id]=key.split("|");(byWeek[w]=byWeek[w]||[]).push({day:d,id,line:val})}
+  try{
+    for(const [w,changes] of Object.entries(byWeek)){
+      if(localMode){
+        let cur={};try{cur=JSON.parse(ls("deli.week."+w)||"{}")}catch(e){}
+        cur.days=cur.days||{};
+        for(const c of changes){cur.days[c.day]=cur.days[c.day]||{lines:{}};cur.days[c.day].lines[c.id]=c.line}
+        ls("deli.week."+w,JSON.stringify(cur));continue;
+      }
+      await api("patch",null,{week:w,changes});
+    }
+    setStatus(localMode?"Saved on this device only":"Saved · "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
+  }catch(e){
+    if(e&&e.code==="bad_pin"){readOnly=true;showBanner("Edit PIN not accepted. The plan is view only on this device. Open Settings to fix it.");render()}
+    else if(e&&e.code==="bad_key"){showBanner("Device key not accepted. Open Settings to fix it.")}
+    else{for(const [k,v] of batch)if(!pending.has(k))pending.set(k,v);setStatus("Couldn't save, retrying… check the internet connection.",true);timer=setTimeout(flush,4000)}
+  }finally{writing=false}
+}
+
+function applyPending(){
+  for(const [key,val] of pending){const [w,d,id]=key.split("|");if(w!==weekId)continue;dayLines(d)[id]=val}
+}
+function showBanner(t){const b=$("banner");b.textContent=t;b.hidden=!t}
+
+async function fetchWeek(quiet){
+  const myWeek=weekId;
+  try{
+    const j=await api("week",{week:myWeek});
+    if(myWeek!==weekId)return;
+    if(pending.size||writing||Date.now()-lastTyping<3000)return; // don't overwrite while someone is typing
+    plan=j.plan&&j.plan.days?j.plan:{days:{}};
+    applyPending();render();
+    if(!quiet)setStatus("Up to date");
+  }catch(e){
+    if(e&&e.code==="bad_key")showBanner("Device key not accepted. Open Settings to fix it.");
+    else if(!quiet)setStatus("Couldn't load the plan. Check the internet connection.",true);
+  }
+}
+
+function loadWeek(){
+  weekId=iso(monday);plan={days:{}};
+  if(localMode){
+    try{plan=JSON.parse(ls("deli.week."+weekId)||'{"days":{}}')}catch(e){plan={days:{}}}
+    render();return;
+  }
+  render();setStatus("Loading…");fetchWeek(false);
+}
+
+async function connect(){
+  cfg=getCfg();clearInterval(pollTimer);readOnly=false;showBanner("");
+  if(!cfg.url||!cfg.key){
+    localMode=true;readOnly=false;
+    showBanner("Not connected to the shared plan. Changes stay on this device. Open Settings to connect.");
+    loadWeek();return;
+  }
+  localMode=false;
+  try{
+    const j=await api("ping",{pin:cfg.pin||""});
+    readOnly=!j.canEdit;
+    if(readOnly)showBanner(cfg.pin?"Edit PIN not accepted. View only on this device.":"View only. Only Yehuda and Eli can change the plan.");
+  }catch(e){
+    if(e&&e.code==="bad_key")showBanner("Device key not accepted. Open Settings to fix it.");
+    else showBanner("Can't reach the shared plan. Check the internet connection, or the API address in Settings.");
+    readOnly=true;
+  }
+  loadWeek();
+  pollTimer=setInterval(()=>{if(!document.hidden)fetchWeek(true)},20000);
+}
+async function init(){render();await connect()}
+
+/* ---------- Settings dialog ---------- */
+function openSettings(){
+  const c=getCfg();$("cfgUrl").value=c.url||"";$("cfgKey").value=c.key||"";$("cfgPin").value=c.pin||"";
+  $("cfgMsg").textContent="";$("settings").hidden=false;$("cfgUrl").focus();
+}
+$("openSettings").onclick=openSettings;
+$("cfgCancel").onclick=()=>{$("settings").hidden=true};
+$("cfgForm").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const c={url:$("cfgUrl").value.trim(),key:$("cfgKey").value.trim(),pin:$("cfgPin").value.trim()};
+  if(c.url&&!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(c.url)){$("cfgMsg").textContent="The API address should start https://script.google.com/macros/s/ and end /exec";return}
+  setCfg(c);$("cfgMsg").textContent="Connecting…";
+  await connect();$("settings").hidden=true;
+});
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!localMode)fetchWeek(true)});
+
+/* ---------- Events ---------- */
+$("board").addEventListener("click",e=>{const d=e.target.closest(".day");if(!d)return;selDay=+d.dataset.day;ls("deli.selDay",String(selDay));render();
+  if(window.matchMedia("(max-width:900px)").matches)$("panel").scrollIntoView({block:"start"})});
+$("entries").addEventListener("input",e=>{if(e.target.matches("input"))onField(e)});
+$("entries").addEventListener("change",e=>{if(e.target.matches("select"))onField(e)});
+$("entries").addEventListener("click",e=>{const b=e.target.closest("button[data-act]");if(!b)return;
+  const row=b.closest(".row");if(b.dataset.act==="del")removeLine(row.dataset.line);else addLine(b.dataset.p)});
+$("search").addEventListener("input",renderEntries);
+$("plannedOnly").addEventListener("change",renderEntries);
+function shift(n){flush();monday=addDays(monday,n*7);loadWeek()}
+$("prevWeek").onclick=()=>shift(-1);
+$("nextWeek").onclick=()=>shift(1);
+$("thisWeek").onclick=()=>{flush();monday=defaultMonday();loadWeek()};
+window.addEventListener("pagehide",flush);
+
+init();
+</script>
+
+</body>
+</html>
