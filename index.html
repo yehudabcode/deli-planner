@@ -89,6 +89,9 @@ h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,5vw,44px);lin
 .remind{margin:8px 12px 0;padding:6px 8px;border-radius:5px;border:1px solid var(--warn);color:var(--warn);font-size:12px;font-weight:600;line-height:1.3}
 .chl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:4px;white-space:nowrap}
 .chl input{width:70px!important;text-align:right}
+.sug{margin-top:4px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.sug.done{color:var(--ok)}
+.sug button{border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:5px;padding:2px 8px;font-size:12px;font-weight:600;cursor:pointer}
 .type{padding:16px 16px 0}
 .type h3{font-family:var(--display);font-weight:700;font-size:20px;margin:0;letter-spacing:.02em}
 .type p{margin:2px 0 0;font-size:13px;color:var(--muted)}
@@ -200,29 +203,29 @@ const PRODUCTS=[
   {id:"franks",cat:"sausage",name:"Franks",sub:"150kg base · chilli split off the same mix",chilli:true,variants:["Fresh flank","Fresh trim","Defrosted flank"]},
   {id:"double_smoked",cat:"sausage",name:"Double smoked franks",sub:"60kg base recipe"},
   {id:"bratwurst",cat:"sausage",name:"Bratwurst",sub:"60kg base recipe"},
-  {id:"kielbasa",cat:"sausage",name:"Kielbasa",sub:"20kg batch"},
+  {id:"kielbasa",cat:"sausage",name:"Kielbasa",sub:"20kg · hold overnight, cook 42"},
   {id:"liverwurst",cat:"sausage",name:"Liverwurst",sub:"30kg base recipe"},
 
   {id:"beef_salami",cat:"salami",name:"Beef salami",sub:"100 / 120kg batch"},
   {id:"turkey_salami",cat:"salami",name:"Turkey salami",sub:"150kg base recipe"},
   {id:"chicken_salami",cat:"salami",name:"Chicken salami",sub:"120kg base recipe"},
   {id:"wurst",cat:"salami",name:"Wurst",sub:"60kg batch"},
-  {id:"hungarian",cat:"salami",name:"Hungarian / Krakowska",sub:"25kg batch"},
-  {id:"chorizo",cat:"salami",name:"Chorizo",sub:"25kg batch"},
+  {id:"hungarian",cat:"salami",name:"Hungarian / Krakowska",sub:"25kg · cook 11, air dry 2½–3 wks"},
+  {id:"chorizo",cat:"salami",name:"Chorizo",sub:"25kg · cook 13, air dry 2½–3 wks"},
   {id:"hasselback",cat:"salami",name:"Hasselback salami",sub:"Per wurst",unit:"pcs"},
   {id:"square_aufschnitt",cat:"salami",name:"Square aufschnitt",sub:"68.5kg base · 14 presses",saltBeef:{perKg:9.5/68.5}},
   {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg base recipe",variants:["Half pepper · half olive","All pepper","All olive"],saltBeef:{perKg:null,skipVariant:"All pepper"}},
 
-  {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",variants:["60L brine","Downstairs brine"]},
-  {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup"},
-  {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup"},
-  {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure"},
-  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine"},
-  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure"},
+  {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",flow:{min:5,max:7},variants:["60L brine","Downstairs brine"]},
+  {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup",flow:{min:1}},
+  {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup",flow:{min:1}},
+  {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure",flow:{min:1}},
+  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine",flow:{min:5,max:7}},
+  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",flow:{min:14,what:"Smoke"}},
 
-  {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine"},
-  {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine"},
-  {id:"turkey_drumsticks",cat:"poultry",name:"Turkey drumsticks",sub:"Smoked · 50L brine"},
+  {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine",flow:{min:1,what:"Smoke"}},
+  {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine",flow:{min:1}},
+  {id:"turkey_drumsticks",cat:"poultry",name:"Turkey drumsticks",sub:"Smoked · 50L brine",flow:{min:1}},
 ];
 const PMAP=Object.fromEntries(PRODUCTS.map(p=>[p.id,p]));
 const UNITS=["kg","pcs","batch","box"];
@@ -282,7 +285,7 @@ function renderBoard(){
     let kg=0;ls_.forEach(l=>{if((l.unit||"kg")==="kg"&&+l.qty>0)kg+=+l.qty});
     const items=byCat.length?byCat.map(l=>{const p=PMAP[l.p]||{name:l.p};
       const isWhole=CATTYPE[p.cat]==="whole";
-      const extra=[isWhole?(l.st||STAGES[0]):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,l.note].filter(Boolean).join(" · ");
+      const extra=[isWhole?(l.st||STAGES[0]):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,l.ck?((p.flow&&p.flow.what)||"Cook")+" "+shortDate(parseIso(l.ck)):null,l.note].filter(Boolean).join(" · ");
       const q=+l.qty>0?`<span class="q">${fmt(+l.qty)} ${esc(l.unit||"kg")}</span>`:`<span class="q tbc">qty TBC</span>`;
       return `<li><span class="nm">${esc(p.name)}${extra?`<small>${esc(extra)}</small>`:""}</span>${q}</li>`}).join("")
       :`<li class="clear" style="border:0;padding:0">Nothing planned</li>`;
@@ -294,6 +297,32 @@ function renderBoard(){
     </button>`}).join("");
 }
 
+/* Cook-date suggestion for whole muscle lines at the brine / inject stage */
+const DAYKEYS=["sun","mon","tue","wed","thu","fri","sat"];
+function nextWorkday(d){const t=new Date(d);while(t.getDay()===0||t.getDay()===6)t.setDate(t.getDate()+1);return t}
+function shortDate(d){return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]+" "+d.getDate()+" "+MONTHS[d.getMonth()].slice(0,3)}
+function cookTarget(p,dayIdx){if(!p.flow)return null;const base=addDays(monday,dayIdx);
+  return {from:nextWorkday(addDays(base,p.flow.min)),to:p.flow.max?addDays(base,p.flow.max):null}}
+function isBrineStage(p,l){return CATTYPE[p.cat]==="whole"&&p.flow&&(l.st||STAGES[0])===STAGES[0]}
+function sugHtml(p,l){
+  if(!l||!isBrineStage(p,l)||!(+l.qty>0))return "";
+  const what=(p.flow.what||"Cook");
+  if(l.ck)return `<div class="sug done">${what} day added: ${esc(shortDate(parseIso(l.ck)))}</div>`;
+  const t=cookTarget(p,selDay);
+  const range=p.flow.max?` (${p.flow.min}–${p.flow.max} days, up to ${shortDate(t.to)})`:"";
+  return `<div class="sug">${what} from ${shortDate(t.from)}${range}${readOnly?"":` <button data-act="cook">Add to plan</button>`}</div>`;
+}
+function addCookDay(srcId){
+  const k=DAYS[selDay][0];const lines=dayLines(k);const src=lines[srcId];if(!src)return;
+  const p=PMAP[src.p];const t=cookTarget(p,selDay).from;
+  const wk=iso(addDays(t,1-t.getDay()));const dk=DAYKEYS[t.getDay()];
+  const nid=newId();
+  const line={p:src.p,qty:src.qty,unit:src.unit||"kg",v:src.v||null,st:STAGES[1],note:"Injected "+shortDate(addDays(monday,selDay)),o:Date.now()};
+  if(wk===weekId)dayLines(dk)[nid]=line;
+  queueW(wk,dk,nid,line);
+  src.ck=iso(t);queue(k,srcId,{...src});render();
+  setStatus((p.flow.what||"Cook")+" line added to "+shortDate(t));
+}
 function rowHtml(p,l,isFirst,dayKey){
   const id=l?l.id:"new-"+p.id;
   const dis=readOnly?" disabled":"";
@@ -309,7 +338,7 @@ function rowHtml(p,l,isFirst,dayKey){
     <div class="c-var">${vSel}</div>
     <div class="c-qty"><input class="qty" id="q-${id}" data-f="qty" inputmode="decimal" placeholder="—" value="${l&&l.qty!==null&&l.qty!==undefined?esc(l.qty):""}" aria-label="${esc(p.name)} quantity"${dis}><span class="bt" id="b-${id}">${esc(bt)}</span></div>
     <div class="c-unit"><select id="u-${id}" data-f="unit" aria-label="Unit"${dis}>${UNITS.map(u=>`<option${u===unit?" selected":""}>${u}</option>`).join("")}</select></div>
-    <div class="c-note">${p.chilli?`<label class="chl" for="c-${id}">Of which chilli (kg)<input id="c-${id}" data-f="ch" inputmode="decimal" placeholder="0" value="${l&&l.ch!=null?esc(l.ch):""}"${dis}></label>`:""}<input id="n-${id}" data-f="note" placeholder="Note" value="${esc(l?.note||"")}" aria-label="${esc(p.name)} note"${dis}></div>
+    <div class="c-note">${p.chilli?`<label class="chl" for="c-${id}">Of which chilli (kg)<input id="c-${id}" data-f="ch" inputmode="decimal" placeholder="0" value="${l&&l.ch!=null?esc(l.ch):""}"${dis}></label>`:""}<input id="n-${id}" data-f="note" placeholder="Note" value="${esc(l?.note||"")}" aria-label="${esc(p.name)} note"${dis}>${sugHtml(p,l)}</div>
     <div class="acts">${acts}</div>
   </div>`}
 
@@ -387,6 +416,7 @@ function setCfg(c){ls(CFG_KEY,JSON.stringify(c))}
 let cfg=getCfg(), pollTimer=null, lastTyping=0;
 
 function setStatus(t,err){const s=$("status");s.textContent=t;s.classList.toggle("err",!!err)}
+function queueW(week,day,id,val){pending.set(week+"|"+day+"|"+id,val);clearTimeout(timer);timer=setTimeout(flush,700)}
 function queue(day,id,val){lastTyping=Date.now();pending.set(weekId+"|"+day+"|"+id,val);setStatus("Saving…");clearTimeout(timer);timer=setTimeout(flush,700)}
 
 async function api(action,params,body){
@@ -503,7 +533,7 @@ $("board").addEventListener("click",e=>{const d=e.target.closest(".day");if(!d)r
 $("entries").addEventListener("input",e=>{if(e.target.matches("input"))onField(e)});
 $("entries").addEventListener("change",e=>{if(e.target.matches("select"))onField(e)});
 $("entries").addEventListener("click",e=>{const b=e.target.closest("button[data-act]");if(!b)return;
-  const row=b.closest(".row");if(b.dataset.act==="del")removeLine(row.dataset.line);else addLine(b.dataset.p)});
+  const row=b.closest(".row");if(b.dataset.act==="del")removeLine(row.dataset.line);else if(b.dataset.act==="cook")addCookDay(row.dataset.line);else addLine(b.dataset.p)});
 $("search").addEventListener("input",renderEntries);
 $("plannedOnly").addEventListener("change",renderEntries);
 function shift(n){flush();monday=addDays(monday,n*7);loadWeek()}
