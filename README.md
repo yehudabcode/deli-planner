@@ -10,6 +10,7 @@ Weekly production planner for the MH Meats deli: plan each product by day, then 
 
 - **Minced products** (salami, sausage, aufschnitt): quantity = kg of meat block (meat + skin + water + ice + fat).
 - **Whole muscle products**: quantity = kg of green weight (before injection).
+- All recipe ingredient amounts are shown in grams (e.g. 4.65kg → 4650g). Liquids by weight in grams too.
 - Recipes scale exactly. Over 150kg (tumbler max) splits into equal batches of 150kg or less.
 - Everything shows on its production day. Whole muscle products have a stage, so one product can appear on its brine/inject day and again on its prep & cook day.
 - Only Yehuda and Eli can change the plan (edit PIN).
