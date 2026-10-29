@@ -86,6 +86,9 @@ h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,5vw,44px);lin
 .tools label{display:flex;gap:6px;align-items:center;font-size:14px;color:var(--muted);cursor:pointer}
 .cat{padding:4px 16px 10px}
 .cat h3{font-family:var(--display);font-weight:600;letter-spacing:.1em;text-transform:uppercase;font-size:14px;color:var(--muted);margin:14px 0 4px;padding-bottom:4px;border-bottom:1px solid var(--line)}
+.remind{margin:8px 12px 0;padding:6px 8px;border-radius:5px;border:1px solid var(--warn);color:var(--warn);font-size:12px;font-weight:600;line-height:1.3}
+.chl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:4px;white-space:nowrap}
+.chl input{width:70px!important;text-align:right}
 .type{padding:16px 16px 0}
 .type h3{font-family:var(--display);font-weight:700;font-size:20px;margin:0;letter-spacing:.02em}
 .type p{margin:2px 0 0;font-size:13px;color:var(--muted)}
@@ -194,39 +197,32 @@ function splitBatches(kg){if(!(kg>0))return null;const n=Math.ceil(kg/TUMBLER_MA
 function batchText(l){if((l.unit||"kg")!=="kg")return "";const b=splitBatches(+l.qty);if(!b)return "";
   return b.n===1?"1 batch":b.n+" × "+fmt(Math.round(b.each*100)/100)+" kg"}
 const PRODUCTS=[
-  {id:"franks",cat:"sausage",name:"Franks",sub:"150kg batch",variants:["Fresh flank","Fresh trim","Defrosted flank"]},
-  {id:"chilli_franks",cat:"sausage",name:"Chilli franks",sub:"Franks base + chilli",variants:["Fresh flank","Fresh trim","Defrosted flank"]},
-  {id:"double_smoked",cat:"sausage",name:"Double smoked franks",sub:"80 / 60kg batch"},
-  {id:"gk_franks",cat:"sausage",name:"GK franks",sub:"40kg batch",variants:["Option 1 · fatty trim","Option 2 · lean + fat"]},
-  {id:"viennas",cat:"sausage",name:"Viennas (GK)",sub:"40kg batch"},
-  {id:"bratwurst",cat:"sausage",name:"Bratwurst",sub:"60 / 40kg batch"},
+  {id:"franks",cat:"sausage",name:"Franks",sub:"150kg base · chilli split off the same mix",chilli:true,variants:["Fresh flank","Fresh trim","Defrosted flank"]},
+  {id:"double_smoked",cat:"sausage",name:"Double smoked franks",sub:"60kg base recipe"},
+  {id:"bratwurst",cat:"sausage",name:"Bratwurst",sub:"60kg base recipe"},
   {id:"kielbasa",cat:"sausage",name:"Kielbasa",sub:"20kg batch"},
-  {id:"cumberland",cat:"sausage",name:"Cumberland",sub:"20kg batch"},
-  {id:"liverwurst",cat:"sausage",name:"Liverwurst",sub:"30 / 40kg batch"},
+  {id:"liverwurst",cat:"sausage",name:"Liverwurst",sub:"30kg base recipe"},
 
   {id:"beef_salami",cat:"salami",name:"Beef salami",sub:"100 / 120kg batch"},
-  {id:"turkey_salami",cat:"salami",name:"Turkey salami",sub:"90 / 150kg batch"},
-  {id:"chicken_salami",cat:"salami",name:"Chicken salami",sub:"120 / 140kg batch"},
+  {id:"turkey_salami",cat:"salami",name:"Turkey salami",sub:"150kg base recipe"},
+  {id:"chicken_salami",cat:"salami",name:"Chicken salami",sub:"120kg base recipe"},
   {id:"wurst",cat:"salami",name:"Wurst",sub:"60kg batch"},
   {id:"hungarian",cat:"salami",name:"Hungarian / Krakowska",sub:"25kg batch"},
   {id:"chorizo",cat:"salami",name:"Chorizo",sub:"25kg batch"},
   {id:"hasselback",cat:"salami",name:"Hasselback salami",sub:"Per wurst",unit:"pcs"},
-  {id:"square_aufschnitt",cat:"salami",name:"Square aufschnitt",sub:"14-press batch"},
-  {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg batch",variants:["Half pepper · half olive","All pepper","All olive"]},
+  {id:"square_aufschnitt",cat:"salami",name:"Square aufschnitt",sub:"68.5kg base · 14 presses",saltBeef:{perKg:9.5/68.5}},
+  {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg base recipe",variants:["Half pepper · half olive","All pepper","All olive"],saltBeef:{perKg:null,skipVariant:"All pepper"}},
 
   {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",variants:["60L brine","Downstairs brine"]},
   {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup"},
   {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup"},
-  {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine"},
-  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"No recipe sheet yet",norecipe:true},
+  {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure"},
+  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine"},
   {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure"},
-  {id:"rib_eye",cat:"beef",name:"Rib eye",sub:"Sous vide 6–8 hrs"},
-  {id:"london_broil",cat:"beef",name:"London broil",sub:"Sous vide 24 hrs"},
 
   {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine"},
   {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine"},
   {id:"turkey_drumsticks",cat:"poultry",name:"Turkey drumsticks",sub:"Smoked · 50L brine"},
-  {id:"cajun_turkey",cat:"poultry",name:"Cajun turkey",sub:"Sous vide 24 hrs"}
 ];
 const PMAP=Object.fromEntries(PRODUCTS.map(p=>[p.id,p]));
 const UNITS=["kg","pcs","batch","box"];
@@ -263,6 +259,21 @@ function linesFor(day){const l=(plan.days?.[day]?.lines)||{};
 function isReal(l){return (l.qty!==null&&l.qty!==""&&l.qty!==undefined&&+l.qty>0)||(l.note&&l.note.trim())}
 
 /* ---------- Render ---------- */
+/* Day-before reminders: cubed salt beef for aufschnitt */
+let nextMon={lines:{}}; // next week's Monday lines (for Friday reminders)
+function prevWorkday(i){return i>0?i-1:null}
+function remindersFor(i){
+  const out=[];
+  const srcLines=i<4?linesFor(DAYS[i+1][0]):Object.entries(nextMon.lines||{}).filter(([,v])=>v&&typeof v==="object").map(([id,v])=>({id,...v}));
+  const target=i<4?DAYS[i+1][1]:"next Monday";
+  for(const l of srcLines.filter(isReal)){
+    const p=PMAP[l.p];if(!p||!p.saltBeef)continue;
+    if(p.saltBeef.skipVariant&&l.v===p.saltBeef.skipVariant)continue;
+    const kg=+l.qty>0&&(l.unit||"kg")==="kg"&&p.saltBeef.perKg?Math.round(+l.qty*p.saltBeef.perKg*10)/10:null;
+    out.push(`Prep cubed salt beef${kg?` (${fmt(kg)} kg)`:" (amount TBC)"} for ${p.name}, ${target}`);
+  }
+  return out;
+}
 function renderBoard(){
   $("weekEyebrow").textContent="Production schedule · w/c "+weekLabel(monday);
   $("board").innerHTML=DAYS.map(([k,name],i)=>{
@@ -271,12 +282,13 @@ function renderBoard(){
     let kg=0;ls_.forEach(l=>{if((l.unit||"kg")==="kg"&&+l.qty>0)kg+=+l.qty});
     const items=byCat.length?byCat.map(l=>{const p=PMAP[l.p]||{name:l.p};
       const isWhole=CATTYPE[p.cat]==="whole";
-      const extra=[isWhole?(l.st||STAGES[0]):null,l.v,+l.qty>0?batchText(l):null,l.note].filter(Boolean).join(" · ");
+      const extra=[isWhole?(l.st||STAGES[0]):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,l.note].filter(Boolean).join(" · ");
       const q=+l.qty>0?`<span class="q">${fmt(+l.qty)} ${esc(l.unit||"kg")}</span>`:`<span class="q tbc">qty TBC</span>`;
       return `<li><span class="nm">${esc(p.name)}${extra?`<small>${esc(extra)}</small>`:""}</span>${q}</li>`}).join("")
       :`<li class="clear" style="border:0;padding:0">Nothing planned</li>`;
     return `<button class="day d${i}${i===selDay?" sel":""}" data-day="${i}" aria-pressed="${i===selDay}">
       <div class="head"><span class="dn">${name}</span><span class="dd">${addDays(monday,i).getDate()} ${MONTHS[addDays(monday,i).getMonth()].slice(0,3)}</span></div>
+      ${remindersFor(i).map(r=>`<div class="remind">${esc(r)}</div>`).join("")}
       <ul class="items">${items}</ul>
       <div class="foot"><span><b>${ls_.length}</b> line${ls_.length===1?"":"s"}</span><span><b>${fmt(kg)}</b> kg</span></div>
     </button>`}).join("");
@@ -297,7 +309,7 @@ function rowHtml(p,l,isFirst,dayKey){
     <div class="c-var">${vSel}</div>
     <div class="c-qty"><input class="qty" id="q-${id}" data-f="qty" inputmode="decimal" placeholder="—" value="${l&&l.qty!==null&&l.qty!==undefined?esc(l.qty):""}" aria-label="${esc(p.name)} quantity"${dis}><span class="bt" id="b-${id}">${esc(bt)}</span></div>
     <div class="c-unit"><select id="u-${id}" data-f="unit" aria-label="Unit"${dis}>${UNITS.map(u=>`<option${u===unit?" selected":""}>${u}</option>`).join("")}</select></div>
-    <div class="c-note"><input id="n-${id}" data-f="note" placeholder="Note" value="${esc(l?.note||"")}" aria-label="${esc(p.name)} note"${dis}></div>
+    <div class="c-note">${p.chilli?`<label class="chl" for="c-${id}">Of which chilli (kg)<input id="c-${id}" data-f="ch" inputmode="decimal" placeholder="0" value="${l&&l.ch!=null?esc(l.ch):""}"${dis}></label>`:""}<input id="n-${id}" data-f="note" placeholder="Note" value="${esc(l?.note||"")}" aria-label="${esc(p.name)} note"${dis}></div>
     <div class="acts">${acts}</div>
   </div>`}
 
@@ -338,7 +350,7 @@ function onField(e){
   const row=el.closest(".row");const k=DAYS[selDay][0];const lines=dayLines(k);
   let id=row.dataset.line;const p=PMAP[row.dataset.p];
   if(id.startsWith("new-")){
-    if(f!=="qty"&&f!=="note")return; // changing unit/variant on a blank row waits until something is entered
+    if(f!=="qty"&&f!=="note"&&f!=="ch")return; // changing unit/variant on a blank row waits until something is entered
     if(!el.value.trim())return;
     const nid=newId();
     const maxO=Math.max(0,...Object.values(lines).filter(Boolean).map(l=>l.o||0));
@@ -348,7 +360,7 @@ function onField(e){
     id=nid;
   }
   const line=lines[id];if(!line)return;
-  if(f==="qty"){const v=el.value.replace(",",".").trim();line.qty=v===""?null:(isNaN(+v)?line.qty:+v)}
+  if(f==="qty"||f==="ch"){const v=el.value.replace(",",".").trim();line[f]=v===""?null:(isNaN(+v)?line[f]:+v)}
   else line[f]=el.value;
   row.classList.toggle("has",isReal(line));
   const btEl=row.querySelector(".bt");if(btEl)btEl.textContent=+line.qty>0?batchText(line):"";
@@ -428,6 +440,7 @@ async function fetchWeek(quiet){
     if(myWeek!==weekId)return;
     if(pending.size||writing||Date.now()-lastTyping<3000)return; // don't overwrite while someone is typing
     plan=j.plan&&j.plan.days?j.plan:{days:{}};
+    try{const n=await api("week",{week:iso(addDays(monday,7))});if(myWeek===weekId)nextMon=(n.plan&&n.plan.days&&n.plan.days.mon)||{lines:{}}}catch(e){}
     applyPending();render();
     if(!quiet)setStatus("Up to date");
   }catch(e){
@@ -437,9 +450,10 @@ async function fetchWeek(quiet){
 }
 
 function loadWeek(){
-  weekId=iso(monday);plan={days:{}};
+  weekId=iso(monday);plan={days:{}};nextMon={lines:{}};
   if(localMode){
     try{plan=JSON.parse(ls("deli.week."+weekId)||'{"days":{}}')}catch(e){plan={days:{}}}
+    try{nextMon=(JSON.parse(ls("deli.week."+iso(addDays(monday,7)))||'{"days":{}}').days||{}).mon||{lines:{}}}catch(e){}
     render();return;
   }
   render();setStatus("Loading…");fetchWeek(false);

@@ -14,6 +14,8 @@ Weekly production planner for the MH Meats deli: plan each product by day, then 
 - Recipes scale exactly. Over 150kg (tumbler max) splits into equal batches of 150kg or less.
 - Everything shows on its production day. Whole muscle products have a stage, so one product can appear on its brine/inject day and again on its prep & cook day.
 - Only Yehuda and Eli can change the plan (edit PIN).
+- Chilli franks are split off the regular franks mix: enter the chilli kg inside the Franks line (2g/kg red spice extract + 2g/kg chilli flakes).
+- Square aufschnitt and pepper/olive aufschnitt (olive variants) show a reminder on the previous working day to prep cubed salt beef (square: 9.5kg per 68.5kg; pepper/olive amount TBC).
 
 ## Backend setup (once)
 
