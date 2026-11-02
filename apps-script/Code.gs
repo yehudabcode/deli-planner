@@ -11,6 +11,11 @@
  * Sheet tabs it uses (created automatically):
  *   Plans  – one row per week: week (Monday yyyy-mm-dd) | plan JSON | updated | changes
  *   Log    – every change: time | week | day | line id | product | qty | unit | note
+ *   Recipes – one row per ingredient (filled in by hand, never in the public repo):
+ *             Product id | Recipe | Stage | Ingredient | Amount (g) | For (kg) | Note
+ *             Recipe blank = every recipe of that product; "Chilli" = the chilli franks add-on.
+ *             Stage blank for minced products; "Brine / inject" or "Prep & cook" for whole muscle.
+ *             Amount (g) is for the "For (kg)" weight of meat block / green weight (e.g. 4650 for 150).
  */
 
 const PLANS = 'Plans';
@@ -47,6 +52,21 @@ function sheet_(name, headers) {
 function plansSheet_() { return sheet_(PLANS, ['Week (Monday)', 'Plan JSON', 'Last updated', 'Changes']); }
 function logSheet_() { return sheet_(LOG, ['Time', 'Week', 'Day', 'Line id', 'Product', 'Qty', 'Unit', 'Stage', 'Recipe', 'Note', 'Removed']); }
 
+const RECIPE_HEADERS = ['Product id', 'Recipe', 'Stage', 'Ingredient', 'Amount (g)', 'For (kg)', 'Note'];
+function recipesSheet_() { return sheet_('Recipes', RECIPE_HEADERS); }
+
+function readRecipes_() {
+  const sh = recipesSheet_();
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  return sh.getRange(2, 1, last - 1, RECIPE_HEADERS.length).getValues()
+    .filter(function (r) { return r[0] && r[3] && Number(r[4]) > 0 && Number(r[5]) > 0; })
+    .map(function (r) {
+      return { p: String(r[0]).trim(), r: String(r[1] || '').trim(), st: String(r[2] || '').trim(),
+               ing: String(r[3]).trim(), g: Number(r[4]), per: Number(r[5]), note: String(r[6] || '').trim() };
+    });
+}
+
 function validWeek_(w) { return /^\d{4}-\d{2}-\d{2}$/.test(String(w || '')); }
 
 function findWeekRow_(sh, week) {
@@ -73,6 +93,7 @@ function doGet(e) {
     if (!validWeek_(p.week)) return json_({ ok: false, code: 'bad_week' });
     return json_({ ok: true, plan: readWeek_(p.week) });
   }
+  if (p.action === 'recipes') return json_({ ok: true, recipes: readRecipes_() });
   return json_({ ok: false, code: 'bad_action' });
 }
 
@@ -117,4 +138,4 @@ function doPost(e) {
 }
 
 /** Optional: run once from the editor to check the sheet tabs get created. */
-function setupSheets() { plansSheet_(); logSheet_(); }
+function setupSheets() { plansSheet_(); logSheet_(); recipesSheet_(); }

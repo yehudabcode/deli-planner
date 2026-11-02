@@ -17,6 +17,16 @@ Weekly production planner for the MH Meats deli: plan each product by day, then 
 - Chilli franks are split off the regular franks mix: enter the chilli kg inside the Franks line (2g/kg red spice extract + 2g/kg chilli flakes).
 - Square aufschnitt and pepper/olive aufschnitt (olive variants) show a reminder on the previous working day to prep cubed salt beef (square: 9.5kg per 68.5kg; pepper/olive amount TBC).
 
+## Weigh-outs
+
+- The **Weigh-out sheet** button (next to "Planned only") shows the selected day's ingredients in grams, scaled to the planned kg, split per batch when over 150kg, with a Print button.
+- Recipes live in the Google Sheet's `Recipes` tab (created automatically), one row per ingredient:
+  `Product id | Recipe | Stage | Ingredient | Amount (g) | For (kg) | Note`
+  - **Recipe** blank = applies to every recipe of that product; `Chilli` = the chilli franks add-on (scaled to the chilli kg only).
+  - **Stage** blank for minced products; `Brine / inject` or `Prep & cook` for whole muscle.
+  - **Amount (g)** is for the **For (kg)** weight, exactly as on the recipe sheet (e.g. salt 4650 for 150).
+- A product with no rows shows "Recipe not loaded yet".
+
 ## Backend setup (once)
 
 1. Create a Google Sheet called `Deli Planner`.

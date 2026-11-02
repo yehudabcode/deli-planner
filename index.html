@@ -128,6 +128,29 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
   .row .c-var:empty{display:none}
   .row.sub .pn{visibility:visible;font-size:0;border-left-color:var(--c)}
 }
+.wbtn{border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer}
+.weigh{margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:16px}
+.weigh[hidden]{display:none}
+.weigh .wh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.weigh h2{font-family:var(--display);font-weight:700;font-size:26px;margin:0;line-height:1}
+.weigh .wh p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.wcard{border-top:2px solid var(--line);margin-top:16px;padding-top:10px;break-inside:avoid}
+.wcard h3{font-family:var(--display);font-weight:700;font-size:20px;margin:0}
+.wcard .meta{color:var(--muted);font-size:13px;margin:2px 0 8px}
+.wcard table{width:100%;border-collapse:collapse;font-size:15px}
+.wcard th,.wcard td{text-align:left;padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+.wcard th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
+.wcard td.n,.wcard th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.wcard td.tick{width:34px}
+.wcard tr.sub td{color:var(--muted);font-size:13px}
+.wcard .none{color:var(--warn);font-weight:600;font-size:14px}
+@media print{
+  body *{visibility:hidden}
+  #weigh,#weigh *{visibility:visible}
+  #weigh{position:absolute;left:0;top:0;width:100%;border:0;margin:0;padding:0;background:#fff;color:#000}
+  #weigh .noprint{display:none}
+  .wcard td.tick::before{content:"☐"}
+}
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 </style>
 
@@ -149,7 +172,7 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 
   <nav class="stages" aria-label="Planning stages">
     <span class="stage on">1 · Plan</span>
-    <span class="stage">2 · Elements <small>next</small></span>
+    <span class="stage on">2 · Weigh-outs</span>
     <span class="stage">3 · Tick lists <small>next</small></span>
   </nav>
 
@@ -163,10 +186,12 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
       <div class="tools">
         <input type="search" id="search" placeholder="Find a product" aria-label="Find a product">
         <label><input type="checkbox" id="plannedOnly"> Planned only</label>
+        <button type="button" class="wbtn" id="openWeigh">Weigh-out sheet</button>
       </div>
     </div>
     <div id="entries"></div>
   </section>
+  <section class="weigh" id="weigh" hidden aria-label="Weigh-out sheet"></section>
   <div class="status" id="status"></div>
   <footer>Plan · Produce · Pack · Deliver</footer>
 </div>
@@ -385,7 +410,7 @@ function renderEntries(){
   $("entries").innerHTML=html||`<div class="empty">${only?"Nothing planned for "+name+" yet. Untick “Planned only” to see every product.":"No products match “"+esc(q)+"”."}</div>`;
   if(fid){const el=$(fid);if(el){el.focus();if(ss&&el.setSelectionRange)try{el.setSelectionRange(ss[0],ss[1])}catch(e){}}}
 }
-function render(){renderBoard();renderEntries()}
+function render(){renderBoard();renderEntries();if(!$("weigh").hidden)renderWeigh()}
 
 /* ---------- Editing ---------- */
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
@@ -528,10 +553,60 @@ async function connect(){
     else showBanner("Can't reach the shared plan. Check the internet connection, or the API address in Settings.");
     readOnly=true;
   }
-  loadWeek();
+  loadWeek();loadRecipes();
   pollTimer=setInterval(()=>{if(!document.hidden)fetchWeek(true)},20000);
 }
 async function init(){render();await connect()}
+
+/* ---------- Weigh-outs (recipes live in the Google Sheet "Recipes" tab, not in this repo) ---------- */
+let recipes=null; // null = not loaded, [] = loaded but empty
+async function loadRecipes(){
+  if(localMode)return;
+  try{const j=await api("recipes",{});recipes=Array.isArray(j.recipes)?j.recipes:[]}
+  catch(e){if(recipes===null)recipes=null}
+  if(!$("weigh").hidden)renderWeigh();
+}
+const gfmt=g=>g>=10?Math.round(g).toLocaleString("en-GB"):String(Math.round(g*10)/10);
+function recipeRows(p,l,mode){
+  const isWhole=CATTYPE[p.cat]==="whole", st=l.st||STAGES[0];
+  return (recipes||[]).filter(r=>r.p===p.id
+    &&(mode==="chilli"?r.r==="Chilli":(r.r!=="Chilli"&&(!r.r||r.r===(l.v||(p.variants||[])[0]||""))))
+    &&(isWhole?r.st===st:!r.st));
+}
+function weighCard(p,l){
+  const isWhole=CATTYPE[p.cat]==="whole";
+  const kg=+l.qty, unitOk=(l.unit||"kg")==="kg"&&kg>0;
+  const head=`<h3>${esc(p.name)}</h3><div class="meta">${[unitOk?fmt(kg)+" kg "+(isWhole?"green weight":"meat block"):null,isWhole?(l.st||STAGES[0]):null,l.v,unitOk?batchText(l):null,l.note].filter(Boolean).map(esc).join(" · ")}</div>`;
+  if(!unitOk)return `<div class="wcard">${head}<p class="none">Quantity isn't in kg, so it can't be scaled. Enter it as kg.</p></div>`;
+  const rows=recipeRows(p,l);
+  if(!rows.length)return `<div class="wcard">${head}<p class="none">Recipe not loaded yet${isWhole?" for this stage":""}.</p></div>`;
+  const b=splitBatches(kg), many=b.n>1;
+  let body=rows.map(r=>{const tot=r.g*kg/r.per;
+    return `<tr><td class="tick"></td><td>${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td>${many?`<td class="n">${gfmt(tot/b.n)} g</td>`:""}<td class="n">${gfmt(tot)} g</td></tr>`}).join("");
+  const ch=+l.ch;
+  if(p.chilli&&ch>0){
+    const cr=recipeRows(p,l,"chilli");
+    body+=`<tr class="sub"><td></td><td colspan="${many?3:2}">Chilli franks: add to ${fmt(ch)} kg of the mix only</td></tr>`;
+    body+=cr.length?cr.map(r=>`<tr><td class="tick"></td><td>${esc(r.ing)} (chilli)</td>${many?"<td></td>":""}<td class="n">${gfmt(r.g*ch/r.per)} g</td></tr>`).join("")
+      :`<tr><td></td><td colspan="${many?3:2}" class="none">Chilli add-on not loaded yet</td></tr>`;
+  }
+  const salt=p.saltBeef&&!(p.saltBeef.skipVariant&&l.v===p.saltBeef.skipVariant)
+    ?`<tr class="sub"><td></td><td colspan="${many?3:2}">Cubed salt beef: ${p.saltBeef.perKg?fmt(Math.round(kg*p.saltBeef.perKg*10)/10)+" kg (prepped the day before)":"amount TBC"}</td></tr>`:"";
+  return `<div class="wcard">${head}<table><thead><tr><th></th><th>Ingredient</th>${many?`<th class="n">Per batch (×${b.n})</th>`:""}<th class="n">Total</th></tr></thead><tbody>${body}${salt}</tbody></table></div>`;
+}
+function renderWeigh(){
+  const [k,name]=DAYS[selDay], d=addDays(monday,selDay);
+  const ls_=linesFor(k).filter(l=>isReal(l)&&PMAP[l.p]);
+  const byCat=CATS.flatMap(([c])=>ls_.filter(l=>PMAP[l.p].cat===c));
+  const status=localMode?"Not connected, so recipes can't load. Connect in Settings."
+    :recipes===null?"Loading recipes…":!recipes.length?"No recipes in the sheet yet.":"";
+  $("weigh").innerHTML=`<div class="wh"><div><h2>Weigh-out · ${name} ${d.getDate()} ${MONTHS[d.getMonth()]}</h2>
+    <p>All amounts in grams, scaled exactly to the planned kg. Over ${TUMBLER_MAX} kg splits into equal batches.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
+    <div class="noprint"><button type="button" class="wbtn" id="printWeigh">Print</button> <button type="button" class="wbtn" id="closeWeigh">Close</button></div></div>
+    ${byCat.length?byCat.map(l=>weighCard(PMAP[l.p],l)).join(""):`<p>Nothing planned for ${name}.</p>`}`;
+}
+$("openWeigh").onclick=()=>{$("weigh").hidden=false;renderWeigh();$("weigh").scrollIntoView({block:"start"});if(!localMode&&!recipes)loadRecipes()};
+$("weigh").addEventListener("click",e=>{if(e.target.id==="printWeigh")window.print();else if(e.target.id==="closeWeigh")$("weigh").hidden=true});
 
 /* ---------- Settings dialog ---------- */
 function openSettings(){
