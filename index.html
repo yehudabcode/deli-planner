@@ -241,16 +241,16 @@ const PRODUCTS=[
   {id:"square_aufschnitt",cat:"salami",name:"Square aufschnitt",sub:"68.5kg base · 14 presses",saltBeef:{perKg:9.5/68.5}},
   {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg base recipe",variants:["Half pepper · half olive","All pepper","All olive"],saltBeef:{perKg:{"Half pepper · half olive":0.075,"All olive":0.15},skipVariant:"All pepper"}},
 
-  {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",flow:{min:5,max:7},variants:["60L brine","Downstairs brine"]},
-  {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup",flow:{min:1}},
-  {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup",flow:{min:1}},
-  {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure",flow:{min:1}},
-  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine",flow:{min:5,max:7}},
-  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",flow:{min:14,what:"Smoke"}},
+  {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",pickup:.20,tumble:"Prep & cook",brine:{"60L brine":"brine_sb60","Downstairs brine":"brine_down"},flow:{min:5,max:7},variants:["60L brine","Downstairs brine"]},
+  {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup",pickup:.28,brine:"brine_sb60",flow:{min:1}},
+  {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup",pickup:.40,brine:"brine_navel",flow:{min:1}},
+  {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure",brine:"brine_sb60",noCure:true,flow:{min:1}},
+  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine",pickup:.20,tumble:"Prep & cook",brine:"brine_sb60",flow:{min:5,max:7}},
+  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",calc:"equilibrium",flow:{min:14,what:"Smoke"}},
 
-  {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine",flow:{min:1,what:"Smoke"}},
-  {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine",flow:{min:1}},
-  {id:"turkey_drumsticks",cat:"poultry",name:"Turkey drumsticks",sub:"Smoked · 50L brine",flow:{min:1}},
+  {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine",pickup:.25,brine:"brine_cb60",flow:{min:1,what:"Smoke"}},
+  {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine",pickup:.40,brine:"brine_lg50",noCure:true,flow:{min:1}},
+  {id:"turkey_drumsticks",cat:"poultry",name:"Turkey drumsticks",sub:"Smoked · 50L brine",pickup:.40,brine:"brine_lg50",flow:{min:1}},
 ];
 const PMAP=Object.fromEntries(PRODUCTS.map(p=>[p.id,p]));
 const UNITS=["kg","pcs","batch","box"];
@@ -566,6 +566,54 @@ async function loadRecipes(){
   catch(e){if(recipes===null)recipes=null}
   if(!$("weigh").hidden)renderWeigh();
 }
+/* Brines: one brine per day per type (plus operator top-up). Amounts come from the Recipes tab, "For (kg)" = litres of water/ice on the sheet. */
+const BRINES={
+  brine_sb60:{name:"Brine for salt beef / pastrami / roast beef",litres:65,order:"Inject roast beef FIRST (no cure). Then add the cure and inject salt beef, pastrami and leanside chuck."},
+  brine_cb60:{name:"Brine for smoked chicken breast",litres:65},
+  brine_lg50:{name:"Brine for chicken legs / turkey drumsticks",litres:50,order:"Inject chicken legs FIRST (no cure). Then add the cure and erythorbate and inject turkey drumsticks."},
+  brine_navel:{name:"Brine for navel pastrami",litres:60},
+  brine_down:{name:"Downstairs salt beef brine",sizes:[40,80]}
+};
+const NITRITE_LIMIT=150; // mg/kg added, GB
+let cureStrength=6.25; try{const c=+ls("deli.curePct");if(c>0)cureStrength=c}catch(e){}
+const brineState={}; // per-session top-up litres / size, not saved
+function brineOf(p,l){if(!p.brine)return null;return typeof p.brine==="string"?p.brine:p.brine[l.v||(p.variants||[])[0]]||null}
+function isCure(r){return /^cure\b/i.test(r.ing)}
+function nitriteMg(cureG,kg){return kg>0?cureG*cureStrength*10/kg:0} // mg NaNO2 per kg
+function nitLine(mg,what){if(!(mg>0))return "";const over=mg>NITRITE_LIMIT+0.05;
+  return `<p class="${over?"none":"meta"}">Added nitrite${what?" "+what:""}: ${fmt(Math.round(mg))} mg/kg at ${fmt(cureStrength)}% cure${over?` · OVER the GB limit of ${NITRITE_LIMIT} mg/kg`:""}</p>`}
+function brineCard(bid,items){
+  const b=BRINES[bid], rows=(recipes||[]).filter(r=>r.p===bid);
+  const st=brineState[bid]||(brineState[bid]={top:0,size:b.sizes?b.sizes[0]:null});
+  const cured=items.some(x=>!x.p.noCure);
+  const L=b.sizes?st.size:(b.litres+(+st.top||0));
+  const list=items.map(x=>`${x.p.name} ${fmt(+x.l.qty)} kg`).join(", ");
+  const ctl=b.sizes?`<label class="noprint">Brine size <select data-brine="${bid}" data-f="size">${b.sizes.map(z=>`<option${z==st.size?" selected":""}>${z}</option>`).join("")}</select> litres</label>`
+    :`<label class="noprint">Top-up brine <input type="number" min="0" step="1" value="${st.top||0}" data-brine="${bid}" data-f="top" style="width:70px"> litres</label>`;
+  const head=`<h3>${esc(b.name)}</h3><div class="meta">${fmt(L)} litres water/ice${b.sizes?"":` (${b.litres} + ${fmt(+st.top||0)} top-up)`} · for ${esc(list)}</div>${ctl}${b.order?`<p class="meta"><b>${esc(b.order)}</b></p>`:""}`;
+  if(!rows.length)return `<div class="wcard">${head}<p class="none">Brine recipe not loaded yet.</p></div>`;
+  const use=rows.filter(r=>r.r!=="Cure"||cured);
+  let cureG=0,totG=0;
+  const body=use.map(r=>{const g=r.g*L/r.per;totG+=g;if(isCure(r))cureG+=g;
+    return `<tr><td class="tick"></td><td>${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td><td class="n">${gfmt(g)} g</td></tr>`}).join("");
+  const conc=totG>0?cureG*cureStrength*10/(totG/1000):0; // mg nitrite per kg of brine
+  const nit=cured&&conc>0?items.filter(x=>!x.p.noCure&&x.p.pickup).map(x=>{const mg=conc*x.p.pickup/(1+x.p.pickup);return nitLine(mg,`in ${x.p.name.toLowerCase()} at ${Math.round(x.p.pickup*100)}% pickup`)}).join(""):"";
+  return `<div class="wcard">${head}<table><thead><tr><th></th><th>Ingredient</th><th class="n">Weigh</th></tr></thead><tbody>${body}</tbody></table>${nit}${!cured&&rows.some(r=>r.r==="Cure")?`<p class="meta">No cured product planned, so no cure.</p>`:""}</div>`;
+}
+function rauchCard(p,l){
+  const kg=+l.qty, water=kg*0.5, tot=kg+water;
+  const t=+(ls("deli.rauchTarget")||0);
+  const cureG=t>0?t*tot/(cureStrength*10):null;
+  const ery=(recipes||[]).filter(r=>r.p===p.id&&r.st===(l.st||STAGES[0]));
+  return `<table><thead><tr><th></th><th>Equilibrium wet cure</th><th class="n">Weigh</th></tr></thead><tbody>
+    <tr><td class="tick"></td><td>Water (50% of meat)</td><td class="n">${gfmt(water*1000)} g</td></tr>
+    <tr><td class="tick"></td><td>Salt (3.1% of meat + water)</td><td class="n">${gfmt(tot*31)} g</td></tr>
+    <tr><td class="tick"></td><td>Cure #1</td><td class="n">${cureG?gfmt(cureG)+" g":"enter target"}</td></tr>
+    ${ery.map(r=>`<tr><td class="tick"></td><td>${esc(r.ing)}<br><small>${esc(r.note)}</small></td><td class="n">${gfmt(r.g*kg/r.per)} g</td></tr>`).join("")}
+  </tbody></table>
+  <label class="noprint">Target added nitrite <input type="number" min="0" max="150" step="1" value="${t||""}" data-f="rauchTarget" style="width:70px"> mg/kg (meat + water)</label>
+  ${t>NITRITE_LIMIT?`<p class="none">Target is over the GB limit of ${NITRITE_LIMIT} mg/kg.</p>`:""}`;
+}
 const gfmt=g=>g>=10?Math.round(g).toLocaleString("en-GB"):String(Math.round(g*10)/10);
 function recipeRows(p,l,mode){
   const isWhole=CATTYPE[p.cat]==="whole", st=l.st||STAGES[0];
@@ -578,8 +626,12 @@ function weighCard(p,l){
   const kg=+l.qty, unitOk=(l.unit||"kg")==="kg"&&kg>0;
   const head=`<h3>${esc(p.name)}</h3><div class="meta">${[unitOk?fmt(kg)+" kg "+(isWhole?"green weight":"meat block"):null,isWhole?(l.st||STAGES[0]):null,l.v,unitOk?batchText(l):null,l.note].filter(Boolean).map(esc).join(" · ")}</div>`;
   if(!unitOk)return `<div class="wcard">${head}<p class="none">Quantity isn't in kg, so it can't be scaled. Enter it as kg.</p></div>`;
+  if(p.calc==="equilibrium"&&(l.st||STAGES[0])===STAGES[0])return `<div class="wcard">${head}${rauchCard(p,l)}</div>`;
   const rows=recipeRows(p,l);
-  if(!rows.length)return `<div class="wcard">${head}<p class="none">Recipe not loaded yet${isWhole?" for this stage":""}.</p></div>`;
+  const bid=isWhole&&(l.st||STAGES[0])===STAGES[0]?brineOf(p,l):null;
+  const tgt=isWhole&&p.pickup&&(l.st||STAGES[0])===(p.tumble||STAGES[0])?`<p class="meta">Target weight after tumbling: <b>${fmt(Math.round(kg*(1+p.pickup)*10)/10)} kg</b> (+${Math.round(p.pickup*100)}%)</p>`:"";
+  const bref=bid?`<p class="meta">Brine: see "${esc(BRINES[bid].name)}" above.</p>`:"";
+  if(!rows.length)return `<div class="wcard">${head}${bref}${tgt}${bid||isWhole?(bid?"":`<p class="meta">Nothing to weigh at this stage.</p>`):`<p class="none">Recipe not loaded yet.</p>`}</div>`;
   const b=splitBatches(kg), many=b.n>1;
   let body=rows.map(r=>{const tot=r.g*kg/r.per;
     return `<tr><td class="tick"></td><td>${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td>${many?`<td class="n">${gfmt(tot/b.n)} g</td>`:""}<td class="n">${gfmt(tot)} g</td></tr>`}).join("");
@@ -592,7 +644,14 @@ function weighCard(p,l){
   }
   const salt=p.saltBeef&&!(p.saltBeef.skipVariant&&l.v===p.saltBeef.skipVariant)
     ?`<tr class="sub"><td></td><td colspan="${many?3:2}">Cubed salt beef: ${sbPerKg(p,l)?fmt(Math.round(kg*sbPerKg(p,l)*10)/10)+" kg (prepped the day before)":"amount TBC"}</td></tr>`:"";
-  return `<div class="wcard">${head}<table><thead><tr><th></th><th>Ingredient</th>${many?`<th class="n">Per batch (×${b.n})</th>`:""}<th class="n">Total</th></tr></thead><tbody>${body}${salt}</tbody></table></div>`;
+  const nit=!isWhole?nitLine(nitriteMg(rows.filter(isCure).reduce((a,r)=>a+r.g*kg/r.per,0),kg)):"";
+  return `<div class="wcard">${head}${bref}<table><thead><tr><th></th><th>Ingredient</th>${many?`<th class="n">Per batch (×${b.n})</th>`:""}<th class="n">Total</th></tr></thead><tbody>${body}${salt}</tbody></table>${tgt}${nit}</div>`;
+}
+function brineCards(lines){
+  const g={};
+  for(const l of lines){const p=PMAP[l.p];if(CATTYPE[p.cat]!=="whole"||(l.st||STAGES[0])!==STAGES[0]||!((l.unit||"kg")==="kg"&&+l.qty>0))continue;
+    const bid=brineOf(p,l);if(bid)(g[bid]=g[bid]||[]).push({p,l})}
+  return Object.keys(BRINES).filter(k=>g[k]).map(k=>brineCard(k,g[k])).join("");
 }
 function renderWeigh(){
   const [k,name]=DAYS[selDay], d=addDays(monday,selDay);
@@ -603,9 +662,16 @@ function renderWeigh(){
   $("weigh").innerHTML=`<div class="wh"><div><h2>Weigh-out · ${name} ${d.getDate()} ${MONTHS[d.getMonth()]}</h2>
     <p>All amounts in grams, scaled exactly to the planned kg. Over ${TUMBLER_MAX} kg splits into equal batches.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
     <div class="noprint"><button type="button" class="wbtn" id="printWeigh">Print</button> <button type="button" class="wbtn" id="closeWeigh">Close</button></div></div>
+    <p class="noprint meta"><label>Cure strength <input type="number" min="0.1" step="0.01" value="${cureStrength}" data-f="curePct" style="width:70px"> % nitrite</label> (check the tub label)</p>
+    ${brineCards(byCat)}
     ${byCat.length?byCat.map(l=>weighCard(PMAP[l.p],l)).join(""):`<p>Nothing planned for ${name}.</p>`}`;
 }
 $("openWeigh").onclick=()=>{$("weigh").hidden=false;renderWeigh();$("weigh").scrollIntoView({block:"start"});if(!localMode&&!recipes)loadRecipes()};
+$("weigh").addEventListener("change",e=>{const t=e.target,f=t.dataset.f;if(!f)return;
+  if(f==="top"||f==="size"){const st=brineState[t.dataset.brine];st[f]=Math.max(0,+t.value||0)}
+  else if(f==="curePct"){const v=+t.value;if(v>0){cureStrength=v;ls("deli.curePct",String(v))}}
+  else if(f==="rauchTarget"){ls("deli.rauchTarget",String(Math.max(0,+t.value||0)))}
+  renderWeigh()});
 $("weigh").addEventListener("click",e=>{if(e.target.id==="printWeigh")window.print();else if(e.target.id==="closeWeigh")$("weigh").hidden=true});
 
 /* ---------- Settings dialog ---------- */
