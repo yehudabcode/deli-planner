@@ -144,11 +144,26 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 .wcard td.tick{width:34px}
 .wcard tr.sub td{color:var(--muted);font-size:13px}
 .wcard .none{color:var(--warn);font-weight:600;font-size:14px}
+.tcard .fields{display:flex;flex-wrap:wrap;gap:8px 14px;margin:6px 0;font-size:14px}
+.tcard .fields label{display:flex;align-items:center;gap:6px}
+.tcard input[type=text],.tcard input[type=number],.tcard input[type=time],.tcard select,.tcard textarea{font:inherit;border:1px solid var(--line);border-radius:5px;padding:3px 6px;background:var(--surface);color:inherit}
+.tcard input[type=number]{width:72px}.tcard input.wide{width:140px}
+.tcard td.ck{width:34px}.tcard td.ck input{width:20px;height:20px}
+.tcard tr.step td{font-weight:500}
+.tcard tr.step td.n{font-weight:400}
+.tcard .chk{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:4px;font-size:13px;font-weight:400}
+.tcard .chk label{display:flex;align-items:center;gap:4px}
+.tcard .flags{margin:8px 0 0}
+.tcard .flags p{margin:2px 0;color:var(--warn);font-weight:700}
+.tcard .saved{font-size:12px;color:var(--muted)}
+.tcard textarea{width:100%;min-height:44px;margin-top:6px}
 @media print{
   body *{visibility:hidden}
-  #weigh,#weigh *{visibility:visible}
-  #weigh{position:absolute;left:0;top:0;width:100%;border:0;margin:0;padding:0;background:#fff;color:#000}
-  #weigh .noprint{display:none}
+  body[data-print=weigh] #weigh,body[data-print=weigh] #weigh *,body[data-print=ticks] #ticks,body[data-print=ticks] #ticks *{visibility:visible}
+  #weigh,#ticks{position:absolute;left:0;top:0;width:100%;border:0;margin:0;padding:0;background:#fff;color:#000}
+  #weigh .noprint,#ticks .noprint{display:none}
+  .tcard{break-after:page}
+  .tcard input,.tcard select,.tcard textarea{border:0;border-bottom:1px solid #000;border-radius:0}
   .wcard td.tick::before{content:"☐"}
 }
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
@@ -173,7 +188,7 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
   <nav class="stages" aria-label="Planning stages">
     <span class="stage on">1 · Plan</span>
     <span class="stage on">2 · Weigh-outs</span>
-    <span class="stage">3 · Tick lists <small>next</small></span>
+    <span class="stage on">3 · Tick lists</span>
   </nav>
 
   <div id="banner" class="banner" hidden></div>
@@ -187,11 +202,13 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
         <input type="search" id="search" placeholder="Find a product" aria-label="Find a product">
         <label><input type="checkbox" id="plannedOnly"> Planned only</label>
         <button type="button" class="wbtn" id="openWeigh">Weigh-out sheet</button>
+        <button type="button" class="wbtn" id="openTicks">Tick lists</button>
       </div>
     </div>
     <div id="entries"></div>
   </section>
   <section class="weigh" id="weigh" hidden aria-label="Weigh-out sheet"></section>
+  <section class="weigh" id="ticks" hidden aria-label="Tick lists"></section>
   <div class="status" id="status"></div>
   <footer>Plan · Produce · Pack · Deliver</footer>
 </div>
@@ -221,7 +238,13 @@ const CATS=[
 ];
 const CATTYPE=Object.fromEntries(CATS.map(c=>[c[0],c[2]]));
 const TUMBLER_MAX=150; // kg per tumbler batch
-const STAGES=["Brine / inject","Prep & cook"];
+const DEFAULT_STAGES=["Inject","Cook"];
+function stagesOf(p){return p.stages||DEFAULT_STAGES}
+function gapsOf(p){return p.gaps||[{min:1}]}
+/* old saved lines used "Brine / inject" and "Prep & cook" */
+function stageOf(p,l){const ss=stagesOf(p),st=l&&l.st;if(!st||st==="Brine / inject")return ss[0];if(st==="Prep & cook")return ss[1]||ss[0];return ss.includes(st)?st:ss[0]}
+function isFirstStage(p,l){return stageOf(p,l)===stagesOf(p)[0]}
+const CODES={franks:"FR",double_smoked:"DS",bratwurst:"BW",kielbasa:"KB",liverwurst:"LW",beef_salami:"BS",turkey_salami:"TS",chicken_salami:"CS",wurst:"WU",hungarian:"HU",chorizo:"CH",square_aufschnitt:"SA",pepper_aufschnitt:"PA",salt_beef:"SB",pastrami:"PS",navel_pastrami:"NP",roast_beef:"RB",leanside_chuck:"LC",rauchfleisch:"RF",chicken_breast:"CB",chicken_legs:"CL",turkey_drumsticks:"TD"};
 function splitBatches(kg){if(!(kg>0))return null;const n=Math.ceil(kg/TUMBLER_MAX-1e-9);return {n,each:kg/n}}
 function batchText(l){if((l.unit||"kg")!=="kg")return "";const b=splitBatches(+l.qty);if(!b)return "";
   return b.n===1?"1 batch":b.n+" × "+fmt(Math.round(b.each*100)/100)+" kg"}
@@ -241,12 +264,12 @@ const PRODUCTS=[
   {id:"square_aufschnitt",cat:"salami",name:"Square aufschnitt",sub:"68.5kg base · 14 presses",saltBeef:{perKg:9.5/68.5}},
   {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg base recipe",variants:["Half pepper · half olive","All pepper","All olive"],saltBeef:{perKg:{"Half pepper · half olive":0.075,"All olive":0.15},skipVariant:"All pepper"}},
 
-  {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",pickup:.20,tumble:"Prep & cook",brine:{"60L brine":"brine_sb60","Downstairs brine":"brine_down"},flow:{min:5,max:7},variants:["60L brine","Downstairs brine"]},
+  {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",pickup:.20,tumble:"Tumble",stages:["Inject","Tumble","Cook"],gaps:[{min:5,max:7},{min:1}],brine:{"60L brine":"brine_sb60","Downstairs brine":"brine_down"},flow:{min:5,max:7},variants:["60L brine","Downstairs brine"]},
   {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup",pickup:.28,brine:"brine_sb60",flow:{min:1}},
   {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup",pickup:.40,brine:"brine_navel",flow:{min:1}},
   {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure",brine:"brine_sb60",noCure:true,flow:{min:1}},
-  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine",pickup:.20,tumble:"Prep & cook",brine:"brine_sb60",flow:{min:5,max:7}},
-  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",calc:"equilibrium",flow:{min:14,what:"Smoke"}},
+  {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine",pickup:.20,tumble:"Tumble",stages:["Inject","Tumble","Cook"],gaps:[{min:5,max:7},{min:1}],brine:"brine_sb60",flow:{min:5,max:7}},
+  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",calc:"equilibrium",stages:["Brine","Smoke & sous vide"],gaps:[{min:14}],flow:{min:14,what:"Smoke"}},
 
   {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine",pickup:.25,brine:"brine_cb60",flow:{min:1,what:"Smoke"}},
   {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine",pickup:.40,brine:"brine_lg50",noCure:true,flow:{min:1}},
@@ -311,7 +334,7 @@ function renderBoard(){
     let kg=0;ls_.forEach(l=>{if((l.unit||"kg")==="kg"&&+l.qty>0)kg+=+l.qty});
     const items=byCat.length?byCat.map(l=>{const p=PMAP[l.p]||{name:l.p};
       const isWhole=CATTYPE[p.cat]==="whole";
-      const extra=[isWhole?(l.st||STAGES[0]):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,l.ck?((p.flow&&p.flow.what)||"Cook")+" "+shortDate(parseIso(l.ck)):null,l.note].filter(Boolean).join(" · ");
+      const extra=[isWhole?stageOf(p,l):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,...linksOf(p,l).map(k=>k.st+" "+shortDate(parseIso(k.d))),l.note].filter(Boolean).join(" · ");
       const q=+l.qty>0?`<span class="q">${fmt(+l.qty)} ${esc(l.unit||"kg")}</span>`:`<span class="q tbc">qty TBC</span>`;
       return `<li><span class="nm">${esc(p.name)}${extra?`<small>${esc(extra)}</small>`:""}</span>${q}</li>`}).join("")
       :`<li class="clear" style="border:0;padding:0">Nothing planned</li>`;
@@ -323,45 +346,68 @@ function renderBoard(){
     </button>`}).join("");
 }
 
+/* Batch codes: YYDDD-PP-N (year, day of year, product, batch number of that product that day) */
+function yyddd(d){const j=new Date(d.getFullYear(),0,1);const n=Math.round((new Date(d.getFullYear(),d.getMonth(),d.getDate())-j)/864e5)+1;
+  return String(d.getFullYear()%100).padStart(2,"0")+String(n).padStart(3,"0")}
+function nBatches(l){const b=(l.unit||"kg")==="kg"?splitBatches(+l.qty):null;return b?b.n:1}
+function batchCodes(p,l,dayKey){
+  if(l.codes&&l.codes.length)return l.codes;
+  const di=DAYS.findIndex(d=>d[0]===dayKey), d=addDays(monday,di<0?selDay:di);
+  const same=linesFor(dayKey).filter(x=>x.p===l.p&&!x.src&&isReal(x)&&isFirstStage(p,x));
+  let start=1;for(const x of same){if(x.id===l.id||x===l)break;start+=nBatches(x)}
+  const code=CODES[p.id]||p.id.slice(0,2).toUpperCase();
+  return Array.from({length:nBatches(l)},(_,i)=>yyddd(d)+"-"+code+"-"+(start+i));
+}
+function chilliCode(l,dayKey){const di=DAYS.findIndex(d=>d[0]===dayKey);const d=addDays(monday,di);
+  const same=linesFor(dayKey).filter(x=>x.p==="franks"&&+x.ch>0&&!x.src);let n=1;for(const x of same){if(x.id===l.id)break;n++}
+  return yyddd(d)+"-CF-"+n}
+
 /* Cook-date suggestion for whole muscle lines at the brine / inject stage */
 const DAYKEYS=["sun","mon","tue","wed","thu","fri","sat"];
 function nextWorkday(d){const t=new Date(d);while(t.getDay()===0||t.getDay()===6)t.setDate(t.getDate()+1);return t}
 function shortDate(d){return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]+" "+d.getDate()+" "+MONTHS[d.getMonth()].slice(0,3)}
-function cookTarget(p,dayIdx){if(!p.flow)return null;const base=addDays(monday,dayIdx);
-  return {from:nextWorkday(addDays(base,p.flow.min)),to:p.flow.max?addDays(base,p.flow.max):null}}
-function isBrineStage(p,l){return CATTYPE[p.cat]==="whole"&&p.flow&&(l.st||STAGES[0])===STAGES[0]}
+function linksOf(p,l){if(!l)return [];if(l.links)return l.links;
+  if(l.cki)return [{id:l.cki,wk:l.ckw,dk:l.ckd,st:stagesOf(p)[1]||"Cook",d:l.ck}];return []}
+function isBrineStage(p,l){return CATTYPE[p.cat]==="whole"&&stagesOf(p).length>1&&isFirstStage(p,l)&&!l.src}
 function cookOptions(p,dayIdx){
-  const base=addDays(monday,dayIdx);const out=[];
-  if(p.flow.max){for(let d=p.flow.min;d<=p.flow.max;d++){const t=addDays(base,d);if(t.getDay()!==0&&t.getDay()!==6)out.push(t)}
-    if(!out.length)out.push(nextWorkday(addDays(base,p.flow.min)));}
-  else{let t=nextWorkday(addDays(base,p.flow.min));out.push(t);for(let i=0;i<2;i++){t=nextWorkday(addDays(t,1));out.push(t)}}
+  const g=gapsOf(p)[0];const base=addDays(monday,dayIdx);const out=[];
+  if(g.max){for(let d=g.min;d<=g.max;d++){const t=addDays(base,d);if(t.getDay()!==0&&t.getDay()!==6)out.push(t)}
+    if(!out.length)out.push(nextWorkday(addDays(base,g.min)));}
+  else{let t=nextWorkday(addDays(base,g.min));out.push(t);for(let i=0;i<2;i++){t=nextWorkday(addDays(t,1));out.push(t)}}
   return out;
 }
 function cookSelHtml(p,l,id,dis){
   if(!l||!isBrineStage(p,l)||!(+l.qty>0))return "";
-  const what=(p.flow.what||"Cook").toLowerCase();
+  const nxt=stagesOf(p)[1],what=nxt.toLowerCase();
   const opts=cookOptions(p,selDay);
   if(l.ck&&!opts.some(d=>iso(d)===l.ck))opts.push(parseIso(l.ck));
   return `<select id="k-${id}" data-f="ckd" aria-label="${esc(p.name)} ${what} day" class="cksel${l.ck?" set":""}"${dis}>
     <option value="">Choose ${what} day…</option>
-    ${opts.map((d,i)=>`<option value="${iso(d)}"${l.ck===iso(d)?" selected":""}>${(p.flow.what||"Prep & cook")} ${shortDate(d)}${i===0?" (earliest)":""}</option>`).join("")}
+    ${opts.map((d,i)=>`<option value="${iso(d)}"${l.ck===iso(d)?" selected":""}>${esc(nxt)} ${shortDate(d)}${i===0?" (earliest)":""}</option>`).join("")}
   </select>`;
 }
-function buildCook(src){
-  return {p:src.p,qty:src.qty,unit:src.unit||"kg",v:src.v||null,st:STAGES[1],note:"Injected "+shortDate(parseIso(src.inj)),o:Date.now()};
+function buildNext(src,st,codes){const p=PMAP[src.p];
+  return {p:src.p,qty:src.qty,unit:src.unit||"kg",v:src.v||null,st,src:1,start:src.inj,codes,note:stagesOf(p)[0]+" "+shortDate(parseIso(src.inj)),o:Date.now()};
 }
+function relinkAll(src,id){const p=PMAP[src.p];const codes=batchCodes(p,{...src,id},DAYS[selDay][0]);
+  linksOf(p,src).forEach(k=>putLine(k.wk,k.dk,k.id,buildNext(src,k.st,codes)))}
 function putLine(wk,dk,id,val){if(wk===weekId)dayLines(dk)[id]=val;queueW(wk,dk,id,val)}
 function setCookDay(srcId,val){
   const k=DAYS[selDay][0];const lines=dayLines(k);const src=lines[srcId];if(!src)return;
   const p=PMAP[src.p];
-  if(src.cki)putLine(src.ckw,src.ckd,src.cki,null);
-  delete src.ck;delete src.cki;delete src.ckw;delete src.ckd;
+  linksOf(p,src).forEach(k=>putLine(k.wk,k.dk,k.id,null));
+  delete src.ck;delete src.cki;delete src.ckw;delete src.ckd;delete src.links;
   if(val){
-    const t=parseIso(val);const wk=iso(addDays(t,1-t.getDay()));const dk=DAYKEYS[t.getDay()];
     src.inj=iso(addDays(monday,selDay));
-    const nid=newId();putLine(wk,dk,nid,buildCook(src));
-    Object.assign(src,{ck:val,cki:nid,ckw:wk,ckd:dk});
-    setStatus((p.flow.what||"Prep & cook")+" line added to "+shortDate(t));
+    const codes=batchCodes(p,{...src,id:srcId},k);
+    const ss=stagesOf(p),gs=gapsOf(p);let t=parseIso(val);const links=[];
+    for(let i=1;i<ss.length;i++){
+      if(i>1)t=nextWorkday(addDays(t,(gs[i-1]||{min:1}).min));
+      const wk=iso(addDays(t,1-t.getDay())),dk=DAYKEYS[t.getDay()],nid=newId();
+      putLine(wk,dk,nid,buildNext(src,ss[i],codes));links.push({id:nid,wk,dk,st:ss[i],d:iso(t)});
+    }
+    Object.assign(src,{ck:val,links});
+    setStatus(links.map(x=>x.st+" "+shortDate(parseIso(x.d))).join(", ")+" added");
   }
   queue(k,srcId,{...src});render();
 }
@@ -369,7 +415,7 @@ function rowHtml(p,l,isFirst,dayKey){
   const id=l?l.id:"new-"+p.id;
   const dis=readOnly?" disabled":"";
   const isWhole=CATTYPE[p.cat]==="whole";
-  const stSel=isWhole?`<select id="s-${id}" data-f="st" aria-label="${esc(p.name)} stage"${dis}>${STAGES.map(s=>`<option${(l?.st||STAGES[0])===s?" selected":""}>${esc(s)}</option>`).join("")}</select>`:"";
+  const stSel=isWhole?`<select id="s-${id}" data-f="st" aria-label="${esc(p.name)} stage"${dis||(l&&l.src?" disabled":"")}>${stagesOf(p).map(s=>`<option${stageOf(p,l)===s?" selected":""}>${esc(s)}</option>`).join("")}</select>`:"";
   const vSel=stSel+cookSelHtml(p,l,id,dis)+(p.variants?`<select id="v-${id}" data-f="v" aria-label="${esc(p.name)} recipe"${dis}>${p.variants.map(v=>`<option${(l?.v||p.variants[0])===v?" selected":""}>${esc(v)}</option>`).join("")}</select>`:"");
   const bt=l&&+l.qty>0?batchText(l):"";
   const unit=l?.unit||p.unit||"kg";
@@ -410,7 +456,7 @@ function renderEntries(){
   $("entries").innerHTML=html||`<div class="empty">${only?"Nothing planned for "+name+" yet. Untick “Planned only” to see every product.":"No products match “"+esc(q)+"”."}</div>`;
   if(fid){const el=$(fid);if(el){el.focus();if(ss&&el.setSelectionRange)try{el.setSelectionRange(ss[0],ss[1])}catch(e){}}}
 }
-function render(){renderBoard();renderEntries();if(!$("weigh").hidden)renderWeigh()}
+function render(){renderBoard();renderEntries();if(!$("weigh").hidden)renderWeigh();if(!$("ticks").hidden&&!$("ticks").contains(document.activeElement)){if(recWeek!==weekId)loadRecords().then(renderTicks);else renderTicks()}}
 
 /* ---------- Editing ---------- */
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
@@ -436,21 +482,21 @@ function onField(e){
   else line[f]=el.value;
   row.classList.toggle("has",isReal(line));
   const btEl=row.querySelector(".bt");if(btEl)btEl.textContent=+line.qty>0?batchText(line):"";
-  if(line.cki&&(f==="qty"||f==="v"||f==="unit"))putLine(line.ckw,line.ckd,line.cki,buildCook(line));
-  if(f==="st"&&line.cki&&line.st!==STAGES[0]){setCookDay(id,"");return}
+  if(linksOf(p,line).length&&(f==="qty"||f==="v"||f==="unit"))relinkAll(line,id);
+  if(f==="st"&&linksOf(p,line).length&&!isFirstStage(p,line)){setCookDay(id,"");return}
   if(f==="st")render();
   queue(k,id,{...line});
   renderBoard();
 }
 function removeLine(id){
   const k=DAYS[selDay][0];const lines=dayLines(k);
-  const src=lines[id];if(src&&src.cki)putLine(src.ckw,src.ckd,src.cki,null);
+  const src=lines[id];if(src)linksOf(PMAP[src.p],src).forEach(k=>putLine(k.wk,k.dk,k.id,null));
   lines[id]=null;queue(k,id,null);render();
 }
 function addLine(pid){
   const k=DAYS[selDay][0];const lines=dayLines(k);const p=PMAP[pid];
   const maxO=Math.max(0,...Object.values(lines).filter(Boolean).map(l=>l.o||0));
-  const nid=newId();lines[nid]={p:pid,qty:null,unit:p.unit||"kg",v:p.variants?p.variants[0]:null,st:CATTYPE[p.cat]==="whole"?STAGES[0]:null,note:"",o:maxO+1};
+  const nid=newId();lines[nid]={p:pid,qty:null,unit:p.unit||"kg",v:p.variants?p.variants[0]:null,st:CATTYPE[p.cat]==="whole"?stagesOf(p)[0]:null,note:"",o:maxO+1};
   queue(k,nid,{...lines[nid]});render();$("q-"+nid)?.focus();
 }
 
@@ -560,9 +606,10 @@ async function init(){render();await connect()}
 
 /* ---------- Weigh-outs (recipes live in the Google Sheet "Recipes" tab, not in this repo) ---------- */
 let recipes=null; // null = not loaded, [] = loaded but empty
+let STAFF=[]; // from the STAFF script property (names stay out of this public repo)
 async function loadRecipes(){
   if(localMode)return;
-  try{const j=await api("recipes",{});recipes=Array.isArray(j.recipes)?j.recipes:[]}
+  try{const j=await api("recipes",{});recipes=Array.isArray(j.recipes)?j.recipes:[];if(Array.isArray(j.staff))STAFF=j.staff}
   catch(e){if(recipes===null)recipes=null}
   if(!$("weigh").hidden)renderWeigh();
 }
@@ -583,7 +630,7 @@ function nitriteMg(cureG,kg){return kg>0?cureG*cureStrength*10/kg:0} // mg NaNO2
 function nitLine(mg,what){if(!(mg>0))return "";const over=mg>NITRITE_LIMIT+0.05;
   return `<p class="${over?"none":"meta"}">Added nitrite${what?" "+what:""}: ${fmt(Math.round(mg))} mg/kg at ${fmt(cureStrength)}% cure${over?` · OVER the GB limit of ${NITRITE_LIMIT} mg/kg`:""}</p>`}
 function brineCard(bid,items){
-  const b=BRINES[bid], rows=(recipes||[]).filter(r=>r.p===bid);
+  const b=BRINES[bid], rows=(recipes||[]).filter(r=>r.p===bid&&!r.step);
   const st=brineState[bid]||(brineState[bid]={top:0,size:b.sizes?b.sizes[0]:null});
   const cured=items.some(x=>!x.p.noCure);
   const L=b.sizes?st.size:(b.litres+(+st.top||0));
@@ -600,11 +647,11 @@ function brineCard(bid,items){
   const nit=cured&&conc>0?items.filter(x=>!x.p.noCure&&x.p.pickup).map(x=>{const mg=conc*x.p.pickup/(1+x.p.pickup);return nitLine(mg,`in ${x.p.name.toLowerCase()} at ${Math.round(x.p.pickup*100)}% pickup`)}).join(""):"";
   return `<div class="wcard">${head}<table><thead><tr><th></th><th>Ingredient</th><th class="n">Weigh</th></tr></thead><tbody>${body}</tbody></table>${nit}${!cured&&rows.some(r=>r.r==="Cure")?`<p class="meta">No cured product planned, so no cure.</p>`:""}</div>`;
 }
-function rauchCard(p,l){
+function rauchCard(p,l,noEry){
   const kg=+l.qty, water=kg*0.5, tot=kg+water;
   const t=+(ls("deli.rauchTarget")||0);
   const cureG=t>0?t*tot/(cureStrength*10):null;
-  const ery=(recipes||[]).filter(r=>r.p===p.id&&r.st===(l.st||STAGES[0]));
+  const ery=noEry?[]:(recipes||[]).filter(r=>r.p===p.id&&r.st===stageOf(p,l)&&!r.step);
   return `<table><thead><tr><th></th><th>Equilibrium wet cure</th><th class="n">Weigh</th></tr></thead><tbody>
     <tr><td class="tick"></td><td>Water (50% of meat)</td><td class="n">${gfmt(water*1000)} g</td></tr>
     <tr><td class="tick"></td><td>Salt (3.1% of meat + water)</td><td class="n">${gfmt(tot*31)} g</td></tr>
@@ -616,7 +663,7 @@ function rauchCard(p,l){
 }
 const gfmt=g=>g>=10?Math.round(g).toLocaleString("en-GB"):String(Math.round(g*10)/10);
 function recipeRows(p,l,mode){
-  const isWhole=CATTYPE[p.cat]==="whole", st=l.st||STAGES[0];
+  const isWhole=CATTYPE[p.cat]==="whole", st=stageOf(p,l);
   return (recipes||[]).filter(r=>r.p===p.id
     &&(mode==="chilli"?r.r==="Chilli":(r.r!=="Chilli"&&(!r.r||r.r===(l.v||(p.variants||[])[0]||""))))
     &&(isWhole?r.st===st:!r.st));
@@ -624,12 +671,12 @@ function recipeRows(p,l,mode){
 function weighCard(p,l){
   const isWhole=CATTYPE[p.cat]==="whole";
   const kg=+l.qty, unitOk=(l.unit||"kg")==="kg"&&kg>0;
-  const head=`<h3>${esc(p.name)}</h3><div class="meta">${[unitOk?fmt(kg)+" kg "+(isWhole?"green weight":"meat block"):null,isWhole?(l.st||STAGES[0]):null,l.v,unitOk?batchText(l):null,l.note].filter(Boolean).map(esc).join(" · ")}</div>`;
+  const head=`<h3>${esc(p.name)}</h3><div class="meta">${[unitOk?fmt(kg)+" kg "+(isWhole?"green weight":"meat block"):null,isWhole?stageOf(p,l):null,l.v,unitOk?batchText(l):null,l.note].filter(Boolean).map(esc).join(" · ")}</div>`;
   if(!unitOk)return `<div class="wcard">${head}<p class="none">Quantity isn't in kg, so it can't be scaled. Enter it as kg.</p></div>`;
-  if(p.calc==="equilibrium"&&(l.st||STAGES[0])===STAGES[0])return `<div class="wcard">${head}${rauchCard(p,l)}</div>`;
-  const rows=recipeRows(p,l);
-  const bid=isWhole&&(l.st||STAGES[0])===STAGES[0]?brineOf(p,l):null;
-  const tgt=isWhole&&p.pickup&&(l.st||STAGES[0])===(p.tumble||STAGES[0])?`<p class="meta">Target weight after tumbling: <b>${fmt(Math.round(kg*(1+p.pickup)*10)/10)} kg</b> (+${Math.round(p.pickup*100)}%)</p>`:"";
+  if(p.calc==="equilibrium"&&isFirstStage(p,l))return `<div class="wcard">${head}${rauchCard(p,l)}</div>`;
+  const rows=recipeRows(p,l).filter(r=>!r.step);
+  const bid=isWhole&&isFirstStage(p,l)?brineOf(p,l):null;
+  const tgt=isWhole&&p.pickup&&stageOf(p,l)===(p.tumble||stagesOf(p)[0])?`<p class="meta">Target weight after tumbling: <b>${fmt(Math.round(kg*(1+p.pickup)*10)/10)} kg</b> (+${Math.round(p.pickup*100)}%)</p>`:"";
   const bref=bid?`<p class="meta">Brine: see "${esc(BRINES[bid].name)}" above.</p>`:"";
   if(!rows.length)return `<div class="wcard">${head}${bref}${tgt}${bid||isWhole?(bid?"":`<p class="meta">Nothing to weigh at this stage.</p>`):`<p class="none">Recipe not loaded yet.</p>`}</div>`;
   const b=splitBatches(kg), many=b.n>1;
@@ -637,7 +684,7 @@ function weighCard(p,l){
     return `<tr><td class="tick"></td><td>${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td>${many?`<td class="n">${gfmt(tot/b.n)} g</td>`:""}<td class="n">${gfmt(tot)} g</td></tr>`}).join("");
   const ch=+l.ch;
   if(p.chilli&&ch>0){
-    const cr=recipeRows(p,l,"chilli");
+    const cr=recipeRows(p,l,"chilli").filter(r=>!r.step);
     body+=`<tr class="sub"><td></td><td colspan="${many?3:2}">Chilli franks: add to ${fmt(ch)} kg of the mix only</td></tr>`;
     body+=cr.length?cr.map(r=>`<tr><td class="tick"></td><td>${esc(r.ing)} (chilli)</td>${many?"<td></td>":""}<td class="n">${gfmt(r.g*ch/r.per)} g</td></tr>`).join("")
       :`<tr><td></td><td colspan="${many?3:2}" class="none">Chilli add-on not loaded yet</td></tr>`;
@@ -649,7 +696,7 @@ function weighCard(p,l){
 }
 function brineCards(lines){
   const g={};
-  for(const l of lines){const p=PMAP[l.p];if(CATTYPE[p.cat]!=="whole"||(l.st||STAGES[0])!==STAGES[0]||!((l.unit||"kg")==="kg"&&+l.qty>0))continue;
+  for(const l of lines){const p=PMAP[l.p];if(CATTYPE[p.cat]!=="whole"||!isFirstStage(p,l)||!((l.unit||"kg")==="kg"&&+l.qty>0))continue;
     const bid=brineOf(p,l);if(bid)(g[bid]=g[bid]||[]).push({p,l})}
   return Object.keys(BRINES).filter(k=>g[k]).map(k=>brineCard(k,g[k])).join("");
 }
@@ -672,7 +719,152 @@ $("weigh").addEventListener("change",e=>{const t=e.target,f=t.dataset.f;if(!f)re
   else if(f==="curePct"){const v=+t.value;if(v>0){cureStrength=v;ls("deli.curePct",String(v))}}
   else if(f==="rauchTarget"){ls("deli.rauchTarget",String(Math.max(0,+t.value||0)))}
   renderWeigh()});
-$("weigh").addEventListener("click",e=>{if(e.target.id==="printWeigh")window.print();else if(e.target.id==="closeWeigh")$("weigh").hidden=true});
+$("weigh").addEventListener("click",e=>{if(e.target.id==="printWeigh"){document.body.dataset.print="weigh";window.print()}else if(e.target.id==="closeWeigh")$("weigh").hidden=true});
+
+/* ---------- Tick lists (HACCP). One per batch; records saved to the sheet's Records tab ---------- */
+let records={}, recWeek=null; const recTimers={};
+async function loadRecords(){
+  if(recWeek===weekId)return; const wk=weekId;
+  if(localMode){try{records=JSON.parse(ls("deli.rec."+wk)||"{}")}catch(e){records={}}recWeek=wk;return}
+  try{const j=await api("records",{week:wk});if(wk!==weekId)return;records={};(j.records||[]).forEach(r=>records[r.key]=r);recWeek=wk}
+  catch(e){setStatus("Couldn't load tick list records.",true)}
+}
+function recOf(key,meta){return records[key]||(records[key]={key,week:weekId,ticks:{},vals:{},...meta})}
+function tickRows(p,l){
+  const rows=(recipes||[]).filter(r=>r.p===p.id&&r.r!=="Chilli"&&(!r.r||r.r===(l.v||(p.variants||[])[0]||""))&&(CATTYPE[p.cat]==="whole"?r.st===stageOf(p,l):!r.st));
+  return rows;
+}
+function inp(key,path,val,attrs){return `<input data-rk="${esc(key)}" data-k="${path}" value="${esc(val??"")}" ${attrs||'type="text"'}>`}
+function chkInputs(key,i,r,rec,ctx){
+  const v=rec.vals[i]||{}, c=r.chk||"";
+  if(c==="cool8")return `<div class="chk"><label>Temp °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><span class="meta">must be ≤8°C</span></div>`;
+  if(c.startsWith("program:")){const pn=c.slice(8);return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label><span class="meta">Type <b>${esc(ctx.code)}</b> into Batch Number in FOOD.LOG</span></div>`}
+  if(c==="weight")return `<div class="chk"><label>Weight after kg ${inp(key,"vals."+i+".kg",v.kg,'type="number" step="0.1" inputmode="decimal"')}</label>${ctx.target?`<span class="meta">target ${fmt(ctx.target)} kg</span>`:""}</div>`;
+  if(c==="core")return `<div class="chk"><label>Core reached °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><label>An hour later °C ${inp(key,"vals."+i+".t2",v.t2,'type="number" step="0.1"')}</label></div>`;
+  return "";
+}
+function flagsOf(rec,rows){
+  const f=[];const it=rec.intake||{};
+  if(it.t!==undefined&&it.t!==""&&+it.t>=8)f.push(`Intake ${it.t}°C is not below 8°C: REJECT`+(rec.note?"":" (note needed)"));
+  rows.forEach((r,i)=>{const v=rec.vals[i]||{};
+    if(r.chk==="cool8"&&v.t!==undefined&&v.t!==""&&+v.t>8)f.push(`${r.ing}: ${v.t}°C is over 8°C`+(rec.note?"":" (note needed)"));
+    if(r.chk==="core"&&v.t!==undefined&&v.t!==""&&+v.t<56)f.push(`Sous vide core ${v.t}°C is below the 56°C target`);
+  });
+  return f;
+}
+function summarise(rec,rows){
+  const checks=[];const it=rec.intake||{};
+  if(rec.hasIntake)checks.push({label:"Intake temp",value:it.t!==undefined&&it.t!==""?it.t+"°C at "+(it.time||"—"):""});
+  rows.forEach((r,i)=>{const v=rec.vals[i]||{};if(!r.chk)return;
+    if(r.chk==="cool8")checks.push({label:r.ing,value:v.t?v.t+"°C at "+(v.time||"—"):""});
+    else if(r.chk.startsWith("program:"))checks.push({label:r.ing,value:"Program "+(v.prog||r.chk.slice(8))+(v.start?" started "+v.start:"")});
+    else if(r.chk==="weight")checks.push({label:r.ing,value:v.kg?v.kg+" kg":""});
+    else if(r.chk==="core")checks.push({label:r.ing,value:v.t?v.t+"°C at "+(v.time||"—")+(v.t2?", "+v.t2+"°C an hour later":""):""});
+  });
+  rec.checks=checks;rec.flags=flagsOf(rec,rows);
+  const tickable=rows.length;rec.stepsTotal=tickable;rec.stepsDone=Object.values(rec.ticks||{}).filter(Boolean).length;
+}
+const tickCtx={}; // key -> rows (for flags on change)
+function tickCard(o){
+  // o: {key,title,meta,code,kg,rows,factor,hasIntake,extraTop,extraRow(chk),target,product,stage,dayKey}
+  const rec=recOf(o.key,{day:o.dayKey,date:o.date,code:o.code,product:o.product,stage:o.stage,kg:o.kg,hasIntake:o.hasIntake});
+  Object.assign(rec,{date:o.date,code:o.code,product:o.product,stage:o.stage,kg:o.kg,hasIntake:o.hasIntake});
+  tickCtx[o.key]=o.rows;
+  const staffSel=STAFF.length?`<select data-rk="${esc(o.key)}" data-k="staff"><option value="">—</option>${STAFF.map(n=>`<option${rec.staff===n?" selected":""}>${esc(n)}</option>`).join("")}</select>`:inp(o.key,"staff",rec.staff,'type="text" class="wide"');
+  const it=rec.intake||{};
+  const intake=o.hasIntake?`<label>Intake temp °C ${inp(o.key,"intake.t",it.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>Time ${inp(o.key,"intake.time",it.time,'type="time"')}</label><span class="meta">must be below 8°C, otherwise reject and note</span>`:"";
+  const body=o.rows.map((r,i)=>{
+    const ck=`<td class="ck"><input type="checkbox" data-rk="${esc(o.key)}" data-k="ticks.${i}"${rec.ticks[i]?" checked":""} aria-label="Done"></td>`;
+    if(r.step){const extra=o.extraRow?o.extraRow(r):"";
+      return `<tr class="step">${ck}<td colspan="2">${esc(r.ing)}${chkInputs(o.key,i,r,rec,o)}</td></tr>${extra}`}
+    return `<tr>${ck}<td>${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td><td class="n">${gfmt(r.g*o.factor(r)/r.per)} g</td></tr>`;
+  }).join("");
+  summarise(rec,o.rows);
+  return `<div class="wcard tcard" data-card="${esc(o.key)}">
+    <h3>${esc(o.title)}${o.code?` · <span style="font-variant-numeric:tabular-nums">${esc(o.code)}</span>`:""}</h3><div class="meta">${esc(o.meta)}</div>
+    <div class="fields"><label>Staff ${staffSel}</label><label>Probe ID ${inp(o.key,"probe",rec.probe,'type="text" class="wide"')}</label>${intake}</div>
+    ${o.extraTop||""}
+    <table><tbody>${body||`<tr><td colspan="3" class="none">Method not loaded yet.</td></tr>`}</tbody></table>
+    <textarea data-rk="${esc(o.key)}" data-k="note" placeholder="Notes / corrective action">${esc(rec.note||"")}</textarea>
+    <div class="flags" id="fl-${esc(o.key)}">${rec.flags.map(x=>`<p>⚠ ${esc(x)}</p>`).join("")}</div>
+    <div class="saved noprint" id="sv-${esc(o.key)}">${rec.updated?"Saved":""}</div>
+  </div>`;
+}
+function ticksFor(dayKey){
+  const di=DAYS.findIndex(d=>d[0]===dayKey), date=iso(addDays(monday,di));
+  const ls_=CATS.flatMap(([c])=>linesFor(dayKey).filter(l=>isReal(l)&&PMAP[l.p]&&PMAP[l.p].cat===c));
+  let html="";
+  // brines first
+  const g={};
+  for(const l of ls_){const p=PMAP[l.p];if(CATTYPE[p.cat]!=="whole"||!isFirstStage(p,l)||!((l.unit||"kg")==="kg"&&+l.qty>0))continue;
+    const bid=brineOf(p,l);if(bid)(g[bid]=g[bid]||[]).push({p,l})}
+  for(const bid of Object.keys(BRINES).filter(k=>g[k])){
+    const b=BRINES[bid],st=brineState[bid]||(brineState[bid]={top:0,size:b.sizes?b.sizes[0]:null});
+    const cured=g[bid].some(x=>!x.p.noCure);const L=b.sizes?st.size:(b.litres+(+st.top||0));
+    const rows=(recipes||[]).filter(r=>r.p===bid&&(r.r!=="Cure"||cured));
+    html+=tickCard({key:`${weekId}|${dayKey}|${bid}`,title:b.name,meta:`${fmt(L)} litres water/ice · for ${g[bid].map(x=>x.p.name+" "+fmt(+x.l.qty)+" kg").join(", ")}${b.order?" · "+b.order:""}`,
+      code:"",kg:L,rows,factor:()=>L,hasIntake:false,product:b.name,stage:"Brine",dayKey,date});
+  }
+  for(const l of ls_){
+    const p=PMAP[l.p],isWhole=CATTYPE[p.cat]==="whole",stg=isWhole?stageOf(p,l):"Production";
+    const kg=+l.qty,unitOk=(l.unit||"kg")==="kg"&&kg>0;
+    const codes=batchCodes(p,l,dayKey),n=codes.length,each=unitOk?kg/n:0;
+    const rows=tickRows(p,l);
+    for(let bi=0;bi<n;bi++){
+      const ch=p.chilli&&+l.ch>0?+l.ch/n:0;
+      const extraRow=r=>{
+        if(r.chk==="chilli"){if(!ch)return "";const cr=recipeRows(p,l,"chilli").filter(x=>!x.step);
+          return cr.map(x=>`<tr><td></td><td>${esc(x.ing)} (chilli, ${fmt(Math.round(ch*10)/10)} kg · ${esc(chilliCode(l,dayKey))})</td><td class="n">${gfmt(x.g*ch/x.per)} g</td></tr>`).join("")}
+        if(r.chk==="saltbeef"&&p.saltBeef){const pk=sbPerKg(p,l);return pk?`<tr><td></td><td>Cubed salt beef (prepped the day before)</td><td class="n">${fmt(Math.round(each*pk*10)/10)} kg</td></tr>`:""}
+        return "";
+      };
+      const rauch=p.calc==="equilibrium"&&isFirstStage(p,l)&&unitOk?rauchCard(p,{...l,qty:each},true):"";
+      html+=tickCard({key:`${weekId}|${dayKey}|${l.id}|${bi+1}`,title:p.name+(isWhole?" · "+stg:""),
+        meta:[unitOk?fmt(Math.round(each*100)/100)+" kg "+(isWhole?"green weight":"meat block")+(n>1?` (batch ${bi+1} of ${n})`:""):"Quantity not in kg",l.v,l.note,shortDate(parseIso(date))].filter(Boolean).join(" · "),
+        code:codes[bi],kg:unitOk?Math.round(each*100)/100:null,rows,factor:()=>each,
+        hasIntake:!isWhole||isFirstStage(p,l),extraRow,extraTop:rauch,
+        target:p.pickup&&stg===(p.tumble||stagesOf(p)[0])?Math.round(each*(1+p.pickup)*10)/10:null,
+        product:p.name,stage:stg,dayKey,date});
+    }
+  }
+  return html;
+}
+async function renderTicks(){
+  const [k,name]=DAYS[selDay], d=addDays(monday,selDay);
+  const status=localMode?"Not connected: records stay on this device only.":recipes===null?"Loading recipes…":!recipes.length?"No recipes in the sheet yet.":"";
+  $("ticks").innerHTML=`<div class="wh"><div><h2>Tick lists · ${name} ${d.getDate()} ${MONTHS[d.getMonth()]}</h2>
+    <p>One per batch. Fill in on the tablet, or print and fill in by hand. Records save to the Google Sheet.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
+    <div class="noprint"><button type="button" class="wbtn" id="printTicks">Print</button> ${!readOnly&&!localMode?`<button type="button" class="wbtn" id="makeReport">Make report</button> `:""}<button type="button" class="wbtn" id="closeTicks">Close</button></div></div>
+    ${ticksFor(k)||`<p>Nothing planned for ${name}.</p>`}`;
+}
+function setPath(o,path,val){const ps=path.split(".");let x=o;for(let i=0;i<ps.length-1;i++){x[ps[i]]=x[ps[i]]||{};x=x[ps[i]]}x[ps[ps.length-1]]=val}
+function saveRec(key){
+  clearTimeout(recTimers[key]);
+  recTimers[key]=setTimeout(async()=>{
+    const rec=records[key];if(!rec)return;const sv=$("sv-"+key);
+    if(localMode){ls("deli.rec."+weekId,JSON.stringify(records));if(sv)sv.textContent="Saved on this device";return}
+    try{if(sv)sv.textContent="Saving…";await api("record",null,{record:rec});rec.updated=new Date().toISOString();if(sv)sv.textContent="Saved"}
+    catch(e){if(sv)sv.textContent="Not saved, check connection";}
+  },700);
+}
+function onTick(e){
+  const t=e.target,key=t.dataset.rk;if(!key)return;const rec=records[key];if(!rec)return;
+  setPath(rec,t.dataset.k,t.type==="checkbox"?t.checked:t.value);
+  summarise(rec,tickCtx[key]||[]);
+  const fl=$("fl-"+key);if(fl)fl.innerHTML=rec.flags.map(x=>`<p>⚠ ${esc(x)}</p>`).join("");
+  saveRec(key);
+}
+$("ticks").addEventListener("input",onTick);
+$("ticks").addEventListener("change",e=>{if(e.target.type==="checkbox"||e.target.tagName==="SELECT")onTick(e)});
+$("ticks").addEventListener("click",async e=>{
+  if(e.target.id==="printTicks"){document.body.dataset.print="ticks";window.print()}
+  else if(e.target.id==="closeTicks")$("ticks").hidden=true;
+  else if(e.target.id==="makeReport"){const b=e.target;b.disabled=true;setStatus("Making the report…");
+    try{const j=await api("report",null,{week:weekId});const r=j.result||{};setStatus(`Report made: ${r.count||0} tick lists, ${r.flagged||0} flagged${r.emailed?", emailed":""}. Saved in Google Drive.`)}
+    catch(err){setStatus(err&&err.code==="bad_pin"?"Only Yehuda and Eli can make the report.":"Couldn't make the report.",true)}
+    b.disabled=false}
+});
+$("openTicks").onclick=async()=>{$("ticks").hidden=false;if(!localMode&&!recipes)await loadRecipes();await loadRecords();renderTicks();$("ticks").scrollIntoView({block:"start"})};
 
 /* ---------- Settings dialog ---------- */
 function openSettings(){
