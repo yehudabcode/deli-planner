@@ -238,9 +238,8 @@ const PRODUCTS=[
   {id:"wurst",cat:"salami",name:"Wurst",sub:"60kg batch"},
   {id:"hungarian",cat:"salami",name:"Hungarian / Krakowska",sub:"25kg · cook 11, air dry 2½–3 wks"},
   {id:"chorizo",cat:"salami",name:"Chorizo",sub:"25kg · cook 13, air dry 2½–3 wks"},
-  {id:"hasselback",cat:"salami",name:"Hasselback salami",sub:"Per wurst",unit:"pcs"},
   {id:"square_aufschnitt",cat:"salami",name:"Square aufschnitt",sub:"68.5kg base · 14 presses",saltBeef:{perKg:9.5/68.5}},
-  {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg base recipe",variants:["Half pepper · half olive","All pepper","All olive"],saltBeef:{perKg:null,skipVariant:"All pepper"}},
+  {id:"pepper_aufschnitt",cat:"salami",name:"Roast pepper / olive aufschnitt",sub:"40kg base recipe",variants:["Half pepper · half olive","All pepper","All olive"],saltBeef:{perKg:{"Half pepper · half olive":0.075,"All olive":0.15},skipVariant:"All pepper"}},
 
   {id:"salt_beef",cat:"beef",name:"Salt beef",sub:"20% pickup",flow:{min:5,max:7},variants:["60L brine","Downstairs brine"]},
   {id:"pastrami",cat:"beef",name:"Pastrami",sub:"28% pickup",flow:{min:1}},
@@ -291,6 +290,7 @@ function isReal(l){return (l.qty!==null&&l.qty!==""&&l.qty!==undefined&&+l.qty>0
 /* Day-before reminders: cubed salt beef for aufschnitt */
 let nextMon={lines:{}}; // next week's Monday lines (for Friday reminders)
 function prevWorkday(i){return i>0?i-1:null}
+function sbPerKg(p,l){const k=p.saltBeef.perKg;if(k&&typeof k==="object")return k[l.v||(p.variants||[])[0]]||null;return k||null}
 function remindersFor(i){
   const out=[];
   const srcLines=i<4?linesFor(DAYS[i+1][0]):Object.entries(nextMon.lines||{}).filter(([,v])=>v&&typeof v==="object").map(([id,v])=>({id,...v}));
@@ -298,7 +298,7 @@ function remindersFor(i){
   for(const l of srcLines.filter(isReal)){
     const p=PMAP[l.p];if(!p||!p.saltBeef)continue;
     if(p.saltBeef.skipVariant&&l.v===p.saltBeef.skipVariant)continue;
-    const kg=+l.qty>0&&(l.unit||"kg")==="kg"&&p.saltBeef.perKg?Math.round(+l.qty*p.saltBeef.perKg*10)/10:null;
+    const pk=sbPerKg(p,l),kg=+l.qty>0&&(l.unit||"kg")==="kg"&&pk?Math.round(+l.qty*pk*10)/10:null;
     out.push(`Prep cubed salt beef${kg?` (${fmt(kg)} kg)`:" (amount TBC)"} for ${p.name}, ${target}`);
   }
   return out;
@@ -591,7 +591,7 @@ function weighCard(p,l){
       :`<tr><td></td><td colspan="${many?3:2}" class="none">Chilli add-on not loaded yet</td></tr>`;
   }
   const salt=p.saltBeef&&!(p.saltBeef.skipVariant&&l.v===p.saltBeef.skipVariant)
-    ?`<tr class="sub"><td></td><td colspan="${many?3:2}">Cubed salt beef: ${p.saltBeef.perKg?fmt(Math.round(kg*p.saltBeef.perKg*10)/10)+" kg (prepped the day before)":"amount TBC"}</td></tr>`:"";
+    ?`<tr class="sub"><td></td><td colspan="${many?3:2}">Cubed salt beef: ${sbPerKg(p,l)?fmt(Math.round(kg*sbPerKg(p,l)*10)/10)+" kg (prepped the day before)":"amount TBC"}</td></tr>`:"";
   return `<div class="wcard">${head}<table><thead><tr><th></th><th>Ingredient</th>${many?`<th class="n">Per batch (×${b.n})</th>`:""}<th class="n">Total</th></tr></thead><tbody>${body}${salt}</tbody></table></div>`;
 }
 function renderWeigh(){
