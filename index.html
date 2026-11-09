@@ -624,7 +624,7 @@ const BRINES={
   brine_down:{name:"Downstairs salt beef brine",sizes:[40,80]}
 };
 const NITRITE_LIMIT=150; // mg/kg added, GB
-let cureStrength=6; // HACCP plan: Laycock cure "6% + 94% salt", max 2.5g per kg try{const c=+ls("deli.curePct");if(c>0)cureStrength=c}catch(e){}
+let cureStrength=6; /* HACCP plan: Laycock cure 6% + 94% salt, max 2.5g per kg */ try{const c=+ls("deli.curePct");if(c>0)cureStrength=c}catch(e){}
 const brineState={}; // per-session top-up litres / size, not saved
 function brineOf(p,l){if(!p.brine)return null;return typeof p.brine==="string"?p.brine:p.brine[l.v||(p.variants||[])[0]]||null}
 function isCure(r){return /^cure\b/i.test(r.ing)}
