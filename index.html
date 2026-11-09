@@ -608,11 +608,11 @@ async function init(){render();await connect()}
 
 /* ---------- Weigh-outs (recipes live in the Google Sheet "Recipes" tab, not in this repo) ---------- */
 let recipes=null; // null = not loaded, [] = loaded but empty
-let STAFF=[]; // from the STAFF script property (names stay out of this public repo)
+let STAFF=[]; let recipesErr=null; // from the STAFF script property (names stay out of this public repo)
 async function loadRecipes(){
   if(localMode)return;
   try{const j=await api("recipes",{});recipes=Array.isArray(j.recipes)?j.recipes:[];if(Array.isArray(j.staff))STAFF=j.staff}
-  catch(e){if(recipes===null)recipes=null}
+  catch(e){recipesErr=(e&&e.code)||(e&&e.message)||"unknown";}
   if(!$("weigh").hidden)renderWeigh();
 }
 /* Brines: one brine per day per type (plus operator top-up). Amounts come from the Recipes tab, "For (kg)" = litres of water/ice on the sheet. */
@@ -663,6 +663,8 @@ function rauchCard(p,l,noEry){
   <label class="noprint">Target added nitrite <input type="number" min="0" max="150" step="1" value="${t||""}" data-f="rauchTarget" style="width:70px"> mg/kg (meat + water)</label>
   ${t>NITRITE_LIMIT?`<p class="none">Target is over the GB limit of ${NITRITE_LIMIT} mg/kg.</p>`:""}`;
 }
+function recipeErrText(){return recipesErr==="bad_action"?"Couldn't load recipes: the Apps Script is still running the OLD code. Deploy > Manage deployments > pencil > Version: New version > Deploy."
+  :"Couldn't load recipes ("+recipesErr+"). Check the Apps Script deployment."}
 const gfmt=g=>g>=10?Math.round(g).toLocaleString("en-GB"):String(Math.round(g*10)/10);
 function recipeRows(p,l,mode){
   const isWhole=CATTYPE[p.cat]==="whole", st=stageOf(p,l);
@@ -707,7 +709,7 @@ function renderWeigh(){
   const ls_=linesFor(k).filter(l=>isReal(l)&&PMAP[l.p]);
   const byCat=CATS.flatMap(([c])=>ls_.filter(l=>PMAP[l.p].cat===c));
   const status=localMode?"Not connected, so recipes can't load. Connect in Settings."
-    :recipes===null?"Loading recipes…":!recipes.length?"No recipes in the sheet yet.":"";
+    :recipes===null?(recipesErr?recipeErrText():"Loading recipes…"):!recipes.length?"No recipes in the sheet yet.":"";
   $("weigh").innerHTML=`<div class="wh"><div><h2>Weigh-out · ${name} ${d.getDate()} ${MONTHS[d.getMonth()]}</h2>
     <p>All amounts in grams, scaled exactly to the planned kg. Over ${TUMBLER_MAX} kg splits into equal batches.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
     <div class="noprint"><button type="button" class="wbtn" id="printWeigh">Print</button> <button type="button" class="wbtn" id="closeWeigh">Close</button></div></div>
@@ -833,7 +835,7 @@ function ticksFor(dayKey){
 }
 async function renderTicks(){
   const [k,name]=DAYS[selDay], d=addDays(monday,selDay);
-  const status=localMode?"Not connected: records stay on this device only.":recipes===null?"Loading recipes…":!recipes.length?"No recipes in the sheet yet.":"";
+  const status=localMode?"Not connected: records stay on this device only.":recipes===null?(recipesErr?recipeErrText():"Loading recipes…"):!recipes.length?"No recipes in the sheet yet.":"";
   $("ticks").innerHTML=`<div class="wh"><div><h2>Tick lists · ${name} ${d.getDate()} ${MONTHS[d.getMonth()]}</h2>
     <p>One per batch. Fill in on the tablet, or print and fill in by hand. Records save to the Google Sheet.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
     <div class="noprint"><button type="button" class="wbtn" id="printTicks">Print</button> ${!readOnly&&!localMode?`<button type="button" class="wbtn" id="makeReport">Make report</button> `:""}<button type="button" class="wbtn" id="closeTicks">Close</button></div></div>
