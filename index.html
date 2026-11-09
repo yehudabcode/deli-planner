@@ -53,6 +53,8 @@ h1{font-family:var(--display);font-weight:700;font-size:clamp(30px,5vw,44px);lin
 .stages{display:flex;gap:4px;flex-wrap:wrap}
 .stage{font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:14px;padding:6px 12px;border-radius:6px;border:1px solid var(--line);color:var(--muted);background:transparent}
 .stage.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+button.stage{cursor:pointer;font:inherit;font-family:var(--display);font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:14px}
+button.stage:hover{border-color:var(--fg);color:var(--fg)}
 .stage small{font-family:var(--body);letter-spacing:0;text-transform:none;font-weight:500;opacity:.8;margin-left:4px}
 
 .banner{padding:10px 14px;border-radius:6px;border:1px solid var(--warn);color:var(--warn);background:var(--surface);font-weight:500}
@@ -186,9 +188,9 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
   </header>
 
   <nav class="stages" aria-label="Planning stages">
-    <span class="stage on">1 · Plan</span>
-    <span class="stage on">2 · Weigh-outs</span>
-    <span class="stage on">3 · Tick lists</span>
+    <button type="button" class="stage" id="goPlan">1 · Plan</button>
+    <button type="button" class="stage" id="goWeigh">2 · Weigh-outs</button>
+    <button type="button" class="stage" id="goTicks">3 · Tick lists</button>
   </nav>
 
   <div id="banner" class="banner" hidden></div>
@@ -865,6 +867,16 @@ $("ticks").addEventListener("click",async e=>{
     b.disabled=false}
 });
 $("openTicks").onclick=async()=>{$("ticks").hidden=false;if(!localMode&&!recipes)await loadRecipes();await loadRecords();renderTicks();$("ticks").scrollIntoView({block:"start"})};
+
+/* Top stage buttons */
+function markStage(){$("goWeigh").classList.toggle("on",!$("weigh").hidden);$("goTicks").classList.toggle("on",!$("ticks").hidden);
+  $("goPlan").classList.toggle("on",$("weigh").hidden&&$("ticks").hidden)}
+$("goPlan").onclick=()=>{$("weigh").hidden=true;$("ticks").hidden=true;markStage();$("panel").scrollIntoView({block:"start"})};
+$("goWeigh").onclick=()=>{$("ticks").hidden=true;$("openWeigh").click();markStage()};
+$("goTicks").onclick=async()=>{$("weigh").hidden=true;await $("openTicks").onclick();markStage()};
+new MutationObserver(markStage).observe($("weigh"),{attributes:true,attributeFilter:["hidden"]});
+new MutationObserver(markStage).observe($("ticks"),{attributes:true,attributeFilter:["hidden"]});
+markStage();
 
 /* ---------- Settings dialog ---------- */
 function openSettings(){
