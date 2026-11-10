@@ -150,7 +150,13 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 .tcard .fields label{display:flex;align-items:center;gap:6px}
 .tcard input[type=text],.tcard input[type=number],.tcard input[type=time],.tcard select,.tcard textarea{font:inherit;border:1px solid var(--line);border-radius:5px;padding:3px 6px;background:var(--surface);color:inherit}
 .tcard input[type=number]{width:72px}.tcard input.wide{width:140px}
-.tcard td.ck{width:34px}.tcard td.ck input{width:20px;height:20px}
+.tcard table{font-size:19px}
+.tcard td.ck{width:44px;vertical-align:middle}.tcard td.ck input{width:28px;height:28px}
+.tcard td.ing{width:1%;white-space:nowrap;padding-right:22px}
+.tcard td.ing small{white-space:normal;font-size:14px}
+.tcard td.n{text-align:left;font-weight:700;font-size:21px}
+.tcard tbody tr:nth-child(even) td{background:rgba(127,127,127,.08)}
+.tcard tr.step td{font-size:17px}
 .tcard tr.step td{font-weight:500}
 .tcard tr.step td.n{font-weight:400}
 .tcard .chk{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:4px;font-size:13px;font-weight:400}
@@ -781,7 +787,7 @@ function tickCard(o){
     const ck=`<td class="ck"><input type="checkbox" data-rk="${esc(o.key)}" data-k="ticks.${i}"${rec.ticks[i]?" checked":""} aria-label="Done"></td>`;
     if(r.step){const extra=o.extraRow?o.extraRow(r):"";
       return `<tr class="step">${ck}<td colspan="2">${esc(r.ing)}${chkInputs(o.key,i,r,rec,o)}</td></tr>${extra}`}
-    return `<tr>${ck}<td>${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td><td class="n">${gfmt(r.g*o.factor(r)/r.per)} g</td></tr>`;
+    return `<tr>${ck}<td class="ing">${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td><td class="n">${gfmt(r.g*o.factor(r)/r.per)} g</td></tr>`;
   }).join("");
   summarise(rec,o.rows);
   return `<div class="wcard tcard" data-card="${esc(o.key)}">
@@ -818,8 +824,8 @@ function ticksFor(dayKey){
       const ch=p.chilli&&+l.ch>0?+l.ch/n:0;
       const extraRow=r=>{
         if(r.chk==="chilli"){if(!ch)return "";const cr=recipeRows(p,l,"chilli").filter(x=>!x.step);
-          return cr.map(x=>`<tr><td></td><td>${esc(x.ing)} (chilli, ${fmt(Math.round(ch*10)/10)} kg · ${esc(chilliCode(l,dayKey))})</td><td class="n">${gfmt(x.g*ch/x.per)} g</td></tr>`).join("")}
-        if(r.chk==="saltbeef"&&p.saltBeef){const pk=sbPerKg(p,l);return pk?`<tr><td></td><td>Cubed salt beef (prepped the day before)</td><td class="n">${fmt(Math.round(each*pk*10)/10)} kg</td></tr>`:""}
+          return cr.map(x=>`<tr><td></td><td class="ing">${esc(x.ing)} (chilli, ${fmt(Math.round(ch*10)/10)} kg · ${esc(chilliCode(l,dayKey))})</td><td class="n">${gfmt(x.g*ch/x.per)} g</td></tr>`).join("")}
+        if(r.chk==="saltbeef"&&p.saltBeef){const pk=sbPerKg(p,l);return pk?`<tr><td></td><td class="ing">Cubed salt beef (prepped the day before)</td><td class="n">${fmt(Math.round(each*pk*10)/10)} kg</td></tr>`:""}
         return "";
       };
       const rauch=p.calc==="equilibrium"&&isFirstStage(p,l)&&unitOk?rauchCard(p,{...l,qty:each},true):"";
@@ -865,7 +871,7 @@ $("ticks").addEventListener("click",async e=>{
   else if(e.target.id==="closeTicks")$("ticks").hidden=true;
   else if(e.target.id==="makeReport"){const b=e.target;b.disabled=true;setStatus("Making the report…");
     try{const j=await api("report",null,{week:weekId});const r=j.result||{};setStatus(`Report made: ${r.count||0} tick lists, ${r.flagged||0} flagged${r.emailed?", emailed":""}. Saved in Google Drive.`)}
-    catch(err){setStatus(err&&err.code==="bad_pin"?"Only Yehuda and Eli can make the report.":"Couldn't make the report.",true)}
+    catch(err){setStatus(err&&err.code==="bad_pin"?"Only Yehuda and Eli can make the report.":err instanceof SyntaxError?"Couldn't make the report: the script needs authorising. Open Apps Script and run testReport once.":err&&err.message?"Couldn't make the report: "+err.message:"Couldn't make the report.",true)}
     b.disabled=false}
 });
 $("openTicks").onclick=async()=>{$("ticks").hidden=false;if(!localMode&&!recipes)await loadRecipes();await loadRecords();renderTicks();$("ticks").scrollIntoView({block:"start"})};

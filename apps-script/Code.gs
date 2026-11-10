@@ -146,7 +146,7 @@ function reportDoc_(title, recs, week) {
     recs.map(recordHtml_).join('') + '</body></html>';
 }
 
-function makeReport_(week) {
+function makeReport_(week, noEmail) {
   const recs = readRecords_(week).sort(function (a, b) { return (a.date + a.product + a.code).localeCompare(b.date + b.product + b.code); });
   const folder = reportFolder_(week);
   const files = [];
@@ -166,7 +166,7 @@ function makeReport_(week) {
   });
   const flagged = recs.filter(function (r) { return (r.flags || []).length; });
   const to = props_().getProperty('REPORT_EMAILS');
-  if (to) {
+  if (to && !noEmail) {
     MailApp.sendEmail({
       to: to,
       subject: 'Deli HACCP report – w/c ' + week + (flagged.length ? ' – ' + flagged.length + ' flagged' : ''),
@@ -176,12 +176,15 @@ function makeReport_(week) {
       attachments: files
     });
   }
-  return { folder: folder.getUrl(), count: recs.length, flagged: flagged.length, emailed: !!to };
+  return { folder: folder.getUrl(), count: recs.length, flagged: flagged.length, emailed: !!to && !noEmail };
 }
 
 function mondayOf_(d) { const x = new Date(d); const wd = x.getDay(); x.setDate(x.getDate() - ((wd + 6) % 7)); return Utilities.formatDate(x, 'Europe/London', 'yyyy-MM-dd'); }
 
 /** Runs every Friday 10:00 once installFridayTrigger() has been run. */
+/** Run this from the editor to test the report (and authorise Drive/Gmail). Makes this week's PDFs but sends no email. */
+function testReport() { Logger.log(JSON.stringify(makeReport_(mondayOf_(new Date()), true))); }
+
 function fridayReport() { makeReport_(mondayOf_(new Date())); }
 
 /** Run this ONCE from the editor to switch on the Friday 10:00 report. */
@@ -241,7 +244,8 @@ function doPost(e) {
   if (body.action === 'report') {
     if (!checkPin_(body.pin)) return json_({ ok: false, code: 'bad_pin' });
     if (!validWeek_(body.week)) return json_({ ok: false, code: 'bad_week' });
-    return json_({ ok: true, result: makeReport_(body.week) });
+    try { return json_({ ok: true, result: makeReport_(body.week) }); }
+    catch (err) { return json_({ ok: false, code: 'report_failed', message: String(err && err.message || err) }); }
   }
   if (body.action === 'patch') {
     if (!checkPin_(body.pin)) return json_({ ok: false, code: 'bad_pin' });
