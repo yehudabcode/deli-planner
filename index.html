@@ -869,9 +869,9 @@ $("ticks").addEventListener("change",e=>{if(e.target.type==="checkbox"||e.target
 $("ticks").addEventListener("click",async e=>{
   if(e.target.id==="printTicks"){document.body.dataset.print="ticks";window.print()}
   else if(e.target.id==="closeTicks")$("ticks").hidden=true;
-  else if(e.target.id==="makeReport"){const b=e.target;b.disabled=true;setStatus("Making the report…");
-    try{const j=await api("report",null,{week:weekId});const r=j.result||{};setStatus(`Report made: ${r.count||0} tick lists, ${r.flagged||0} flagged${r.emailed?", emailed":""}. Saved in Google Drive.`)}
-    catch(err){setStatus(err&&err.code==="bad_pin"?"Only Yehuda and Eli can make the report.":err instanceof SyntaxError?"Couldn't make the report: the script needs authorising. Open Apps Script and run testReport once.":err&&err.message?"Couldn't make the report: "+err.message:"Couldn't make the report.",true)}
+  else if(e.target.id==="makeReport"){const b=e.target;b.disabled=true;b.textContent="Making report… (up to a minute)";setStatus("Making the report…");
+    try{const j=await api("report",null,{week:weekId});const r=j.result||{};const msg=`Report made: ${r.count||0} tick lists, ${r.flagged||0} flagged${r.emailed?", emailed":""}. Saved in Google Drive.`;setStatus(msg);b.textContent="✓ "+msg;setTimeout(()=>{b.textContent="Make report"},8000)}
+    catch(err){setStatus(err&&err.code==="bad_pin"?"Only Yehuda and Eli can make the report.":err instanceof SyntaxError?"Couldn't make the report: the script needs authorising. Open Apps Script and run testReport once.":err&&err.message?"Couldn't make the report: "+err.message:"Couldn't make the report.",true);b.textContent="Make report"}
     b.disabled=false}
 });
 $("openTicks").onclick=async()=>{$("ticks").hidden=false;if(!localMode&&!recipes)await loadRecipes();await loadRecords();renderTicks();$("ticks").scrollIntoView({block:"start"})};
