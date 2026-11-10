@@ -146,7 +146,8 @@ function reportDoc_(title, recs, week) {
     recs.map(recordHtml_).join('') + '</body></html>';
 }
 
-function makeReport_(week, noEmail) {
+function makeReport_(week, mode) {
+  mode = mode || 'email'; // 'email' | 'download' | 'both' | 'none'
   const recs = readRecords_(week).sort(function (a, b) { return (a.date + a.product + a.code).localeCompare(b.date + b.product + b.code); });
   const folder = reportFolder_(week);
   const files = [];
@@ -166,7 +167,8 @@ function makeReport_(week, noEmail) {
   });
   const flagged = recs.filter(function (r) { return (r.flags || []).length; });
   const to = props_().getProperty('REPORT_EMAILS');
-  if (to && !noEmail) {
+  const sendMail = !!to && (mode === 'email' || mode === 'both');
+  if (sendMail) {
     MailApp.sendEmail({
       to: to,
       subject: 'Deli HACCP report – w/c ' + week + (flagged.length ? ' – ' + flagged.length + ' flagged' : ''),
@@ -176,14 +178,16 @@ function makeReport_(week, noEmail) {
       attachments: files
     });
   }
-  return { folder: folder.getUrl(), count: recs.length, flagged: flagged.length, emailed: !!to && !noEmail };
+  const out = { folder: folder.getUrl(), count: recs.length, flagged: flagged.length, emailed: sendMail };
+  if (mode === 'download' || mode === 'both') { out.pdf = Utilities.base64Encode(full.getBytes()); out.pdfName = full.getName(); }
+  return out;
 }
 
 function mondayOf_(d) { const x = new Date(d); const wd = x.getDay(); x.setDate(x.getDate() - ((wd + 6) % 7)); return Utilities.formatDate(x, 'Europe/London', 'yyyy-MM-dd'); }
 
 /** Runs every Friday 10:00 once installFridayTrigger() has been run. */
 /** Run this from the editor to test the report (and authorise Drive/Gmail). Makes this week's PDFs but sends no email. */
-function testReport() { Logger.log(JSON.stringify(makeReport_(mondayOf_(new Date()), true))); }
+function testReport() { Logger.log(JSON.stringify(makeReport_(mondayOf_(new Date()), 'none'))); }
 
 function fridayReport() { makeReport_(mondayOf_(new Date())); }
 
@@ -244,7 +248,7 @@ function doPost(e) {
   if (body.action === 'report') {
     if (!checkPin_(body.pin)) return json_({ ok: false, code: 'bad_pin' });
     if (!validWeek_(body.week)) return json_({ ok: false, code: 'bad_week' });
-    try { return json_({ ok: true, result: makeReport_(body.week) }); }
+    try { return json_({ ok: true, result: makeReport_(body.week, body.mode || 'email') }); }
     catch (err) { return json_({ ok: false, code: 'report_failed', message: String(err && err.message || err) }); }
   }
   if (body.action === 'patch') {

@@ -161,6 +161,20 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 .tcard tr.step td.n{font-weight:400}
 .tcard .chk{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:4px;font-size:13px;font-weight:400}
 .tcard .chk label{display:flex;align-items:center;gap:4px}
+.day .items .ok{color:var(--ok);font-weight:800;margin-right:4px}
+.tmenu{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
+.tmi{display:flex;flex-direction:column;gap:4px;text-align:left;padding:14px 16px;border:1px solid var(--line);border-left:6px solid var(--accent);border-radius:8px;background:var(--surface);color:inherit;font:inherit;cursor:pointer}
+.tmi:hover{border-color:var(--accent)}
+.tmi .tt{font-family:var(--display);font-weight:700;font-size:20px}
+.tmi .tc{font-variant-numeric:tabular-nums;font-weight:600}
+.tmi .tm{color:var(--muted);font-size:13px}
+.tmi .ts{font-weight:700;margin-top:4px}
+.tmi.done{border-left-color:var(--ok)}.tmi.done .ts{color:var(--ok)}
+.tmi.flag .ts{color:var(--warn)}
+.tnav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+.tnav .pos{color:var(--muted);font-weight:600}
+.wbtn.okbtn{background:var(--ok);border-color:var(--ok);color:#fff}
+.repopts{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center}
 .tcard .flags{margin:8px 0 0}
 .tcard .flags p{margin:2px 0;color:var(--warn);font-weight:700}
 .tcard .saved{font-size:12px;color:var(--muted)}
@@ -344,7 +358,7 @@ function renderBoard(){
       const isWhole=CATTYPE[p.cat]==="whole";
       const extra=[isWhole?stageOf(p,l):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,...linksOf(p,l).map(k=>k.st+" "+shortDate(parseIso(k.d))),l.note].filter(Boolean).join(" · ");
       const q=+l.qty>0?`<span class="q">${fmt(+l.qty)} ${esc(l.unit||"kg")}</span>`:`<span class="q tbc">qty TBC</span>`;
-      return `<li><span class="nm">${esc(p.name)}${extra?`<small>${esc(extra)}</small>`:""}</span>${q}</li>`}).join("")
+      return `<li><span class="nm">${PMAP[l.p]&&lineDone(k,p,l)?`<span class="ok" title="Tick list complete">✓</span>`:""}${esc(p.name)}${extra?`<small>${esc(extra)}</small>`:""}</span>${q}</li>`}).join("")
       :`<li class="clear" style="border:0;padding:0">Nothing planned</li>`;
     return `<button class="day d${i}${i===selDay?" sel":""}" data-day="${i}" aria-pressed="${i===selDay}">
       <div class="head"><span class="dn">${name}</span><span class="dd">${addDays(monday,i).getDate()} ${MONTHS[addDays(monday,i).getMonth()].slice(0,3)}</span></div>
@@ -572,7 +586,7 @@ async function fetchWeek(quiet){
     if(pending.size||writing||Date.now()-lastTyping<3000)return; // don't overwrite while someone is typing
     plan=j.plan&&j.plan.days?j.plan:{days:{}};
     try{const n=await api("week",{week:iso(addDays(monday,7))});if(myWeek===weekId)nextMon=(n.plan&&n.plan.days&&n.plan.days.mon)||{lines:{}}}catch(e){}
-    applyPending();render();
+    applyPending();render();refreshRecords();
     if(!quiet)setStatus("Up to date");
   }catch(e){
     if(e&&e.code==="bad_key")showBanner("Device key not accepted. Open Settings to fix it.");
@@ -739,6 +753,19 @@ async function loadRecords(){
   try{const j=await api("records",{week:wk});if(wk!==weekId)return;records={};(j.records||[]).forEach(r=>records[r.key]=r);recWeek=wk}
   catch(e){setStatus("Couldn't load tick list records.",true)}
 }
+function lineDone(dayKey,p,l){
+  if(recWeek!==weekId)return false;
+  const n=batchCodes(p,l,dayKey).length;
+  for(let i=1;i<=n;i++){const r=records[`${weekId}|${dayKey}|${l.id}|${i}`];if(!r||!r.stepsTotal||(r.stepsDone||0)<r.stepsTotal)return false}
+  return n>0;
+}
+let lastTickEdit=0;
+async function refreshRecords(){ // pick up ticks done on other devices
+  if(localMode||Date.now()-lastTickEdit<5000||Object.keys(recTimers).some(k=>recTimers[k])||$("ticks").contains(document.activeElement))return;
+  const wk=weekId;
+  try{const j=await api("records",{week:wk});if(wk!==weekId||Date.now()-lastTickEdit<5000)return;
+    const next={};(j.records||[]).forEach(r=>next[r.key]=r);records=next;recWeek=wk;renderBoard()}catch(e){}
+}
 function recOf(key,meta){return records[key]||(records[key]={key,week:weekId,ticks:{},vals:{},...meta})}
 function tickRows(p,l){
   const rows=(recipes||[]).filter(r=>r.p===p.id&&r.r!=="Chilli"&&(!r.r||r.r===(l.v||(p.variants||[])[0]||""))&&(CATTYPE[p.cat]==="whole"?r.st===stageOf(p,l):!r.st));
@@ -790,7 +817,7 @@ function tickCard(o){
     return `<tr>${ck}<td class="ing">${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td><td class="n">${gfmt(r.g*o.factor(r)/r.per)} g</td></tr>`;
   }).join("");
   summarise(rec,o.rows);
-  return `<div class="wcard tcard" data-card="${esc(o.key)}">
+  const html=`<div class="wcard tcard" data-card="${esc(o.key)}">
     <h3>${esc(o.title)}${o.code?` · <span style="font-variant-numeric:tabular-nums">${esc(o.code)}</span>`:""}</h3><div class="meta">${esc(o.meta)}</div>
     <div class="fields"><label>Staff ${staffSel}</label><label>Probe ID ${inp(o.key,"probe",rec.probe,'type="text" class="wide"')}</label>${intake}</div>
     ${o.extraTop||""}
@@ -799,8 +826,33 @@ function tickCard(o){
     <div class="flags" id="fl-${esc(o.key)}">${rec.flags.map(x=>`<p>⚠ ${esc(x)}</p>`).join("")}</div>
     <div class="saved noprint" id="sv-${esc(o.key)}">${rec.updated?"Saved":""}</div>
   </div>`;
+  tickList.push({key:o.key,title:o.title,code:o.code,meta:o.meta,html});
+  return html;
+}
+let tickList=[], tickOpen=null, tickPrintAll=false, repState=null;
+function tickStatus(key){const r=records[key]||{};const d=r.stepsDone||0,t=r.stepsTotal||0,f=(r.flags||[]).length;
+  if(t&&d>=t)return {cls:"done"+(f?" flag":""),txt:"✓ Complete"+(f?` · ⚠ ${f} flagged`:"")};
+  return {cls:f?"flag":"",txt:(d?`${d} of ${t} ticked`:"Not started")+(f?` · ⚠ ${f} flagged`:"")};}
+function tickBody(name){
+  if(!tickList.length)return `<p>Nothing planned for ${name}.</p>`;
+  if(tickPrintAll)return tickList.map(t=>t.html).join("");
+  const i=tickList.findIndex(t=>t.key===tickOpen);
+  if(i>=0){const t=tickList[i],n=tickList.length;
+    return `<div class="tnav noprint"><button type="button" class="wbtn" data-tnav="menu">‹ All tick lists</button>
+      <button type="button" class="wbtn" data-tnav="prev"${i?"":" disabled"}>‹ Prev</button><span class="pos">${i+1} of ${n}</span>
+      <button type="button" class="wbtn" data-tnav="next"${i<n-1?"":" disabled"}>Next ›</button></div>${t.html}`}
+  return `<div class="tmenu">${tickList.map(t=>{const st=tickStatus(t.key);
+    return `<button type="button" class="tmi ${st.cls}" data-open="${esc(t.key)}"><span class="tt">${esc(t.title)}</span>${t.code?`<span class="tc">${esc(t.code)}</span>`:""}<span class="tm">${esc(t.meta)}</span><span class="ts">${st.txt}</span></button>`}).join("")}</div>`;
+}
+function repButton(){
+  if(readOnly||localMode)return "";
+  if(repState&&repState.busy)return `<button type="button" class="wbtn" disabled>Making report… (up to a minute)</button> `;
+  if(repState&&repState.menu)return `<span class="repopts"><b>Report:</b> <button type="button" class="wbtn" data-rep="download">Download</button><button type="button" class="wbtn" data-rep="email">Email</button><button type="button" class="wbtn" data-rep="both">Both</button><button type="button" class="wbtn" data-rep="cancel">Cancel</button></span> `;
+  if(repState&&repState.ok&&Date.now()<repState.until)return `<button type="button" class="wbtn okbtn" id="makeReport">✓ ${esc(repState.ok)}</button> `;
+  return `<button type="button" class="wbtn" id="makeReport">Make report</button> `;
 }
 function ticksFor(dayKey){
+  tickList=[];
   const di=DAYS.findIndex(d=>d[0]===dayKey), date=iso(addDays(monday,di));
   const ls_=CATS.flatMap(([c])=>linesFor(dayKey).filter(l=>isReal(l)&&PMAP[l.p]&&PMAP[l.p].cat===c));
   let html="";
@@ -841,11 +893,12 @@ function ticksFor(dayKey){
 }
 async function renderTicks(){
   const [k,name]=DAYS[selDay], d=addDays(monday,selDay);
+  tickList=[];ticksFor(k);
   const status=localMode?"Not connected: records stay on this device only.":recipes===null?(recipesErr?recipeErrText():"Loading recipes…"):!recipes.length?"No recipes in the sheet yet.":"";
   $("ticks").innerHTML=`<div class="wh"><div><h2>Tick lists · ${name} ${d.getDate()} ${MONTHS[d.getMonth()]}</h2>
     <p>One per batch. Fill in on the tablet, or print and fill in by hand. Records save to the Google Sheet.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
-    <div class="noprint"><button type="button" class="wbtn" id="printTicks">Print</button> ${!readOnly&&!localMode?`<button type="button" class="wbtn" id="makeReport">Make report</button> `:""}<button type="button" class="wbtn" id="closeTicks">Close</button></div></div>
-    ${ticksFor(k)||`<p>Nothing planned for ${name}.</p>`}`;
+    <div class="noprint"><button type="button" class="wbtn" id="printTicks">${tickList.length&&!tickList.some(t=>t.key===tickOpen)?"Print all":"Print"}</button> ${repButton()}<button type="button" class="wbtn" id="closeTicks">Close</button></div></div>
+    ${tickBody(name)}`;
 }
 function setPath(o,path,val){const ps=path.split(".");let x=o;for(let i=0;i<ps.length-1;i++){x[ps[i]]=x[ps[i]]||{};x=x[ps[i]]}x[ps[ps.length-1]]=val}
 function saveRec(key){
@@ -858,27 +911,44 @@ function saveRec(key){
   },700);
 }
 function onTick(e){
-  const t=e.target,key=t.dataset.rk;if(!key)return;const rec=records[key];if(!rec)return;
+  const t=e.target,key=t.dataset.rk;if(!key)return;lastTickEdit=Date.now();const rec=records[key];if(!rec)return;
   setPath(rec,t.dataset.k,t.type==="checkbox"?t.checked:t.value);
   summarise(rec,tickCtx[key]||[]);
+  renderBoard();
   const fl=$("fl-"+key);if(fl)fl.innerHTML=rec.flags.map(x=>`<p>⚠ ${esc(x)}</p>`).join("");
   saveRec(key);
 }
 $("ticks").addEventListener("input",onTick);
 $("ticks").addEventListener("change",e=>{if(e.target.type==="checkbox"||e.target.tagName==="SELECT")onTick(e)});
 $("ticks").addEventListener("click",async e=>{
-  if(e.target.id==="printTicks"){document.body.dataset.print="ticks";window.print()}
-  else if(e.target.id==="closeTicks")$("ticks").hidden=true;
-  else if(e.target.id==="makeReport"){const b=e.target;b.disabled=true;b.textContent="Making report… (up to a minute)";setStatus("Making the report…");
-    try{const j=await api("report",null,{week:weekId});const r=j.result||{};const msg=`Report made: ${r.count||0} tick lists, ${r.flagged||0} flagged${r.emailed?", emailed":""}. Saved in Google Drive.`;setStatus(msg);b.textContent="✓ "+msg;setTimeout(()=>{b.textContent="Make report"},8000)}
-    catch(err){setStatus(err&&err.code==="bad_pin"?"Only Yehuda and Eli can make the report.":err instanceof SyntaxError?"Couldn't make the report: the script needs authorising. Open Apps Script and run testReport once.":err&&err.message?"Couldn't make the report: "+err.message:"Couldn't make the report.",true);b.textContent="Make report"}
-    b.disabled=false}
+  const op=e.target.closest("[data-open]"),nv=e.target.closest("[data-tnav]"),rp=e.target.closest("[data-rep]");
+  if(op){tickOpen=op.dataset.open;renderTicks();$("ticks").scrollIntoView({block:"start"});return}
+  if(nv){const i=tickList.findIndex(t=>t.key===tickOpen),a=nv.dataset.tnav;
+    tickOpen=a==="menu"?null:(tickList[i+(a==="next"?1:-1)]||{}).key||null;renderBoard();renderTicks();$("ticks").scrollIntoView({block:"start"});return}
+  if(e.target.id==="printTicks"){document.body.dataset.print="ticks";
+    if(tickList.some(t=>t.key===tickOpen)){window.print();return}
+    tickPrintAll=true;renderTicks();const back=()=>{tickPrintAll=false;renderTicks()};
+    window.addEventListener("afterprint",back,{once:true});window.print();return}
+  if(e.target.id==="closeTicks"){$("ticks").hidden=true;return}
+  if(e.target.id==="makeReport"){repState={menu:true};renderTicks();return}
+  if(rp){const mode=rp.dataset.rep;if(mode==="cancel"){repState=null;renderTicks();return}
+    repState={busy:true};renderTicks();setStatus("Making the report…");
+    try{const j=await api("report",null,{week:weekId,mode});const r=j.result||{};
+      let dl=false;if(mode!=="email"&&r.pdf){const bin=atob(r.pdf),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+        const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([u],{type:"application/pdf"}));a.download=r.pdfName||"HACCP report.pdf";document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},2000);dl=true}
+      const what=[dl?"downloaded":"",r.emailed?"emailed":""].filter(Boolean).join(" and ")||"saved to Drive";
+      repState={ok:`Report ${what} (${r.count||0} tick lists, ${r.flagged||0} flagged)`,until:Date.now()+20000};
+      setStatus(repState.ok+(mode!=="email"&&!r.pdf?". Download needs the Apps Script update.":""),mode!=="email"&&!r.pdf);
+      setTimeout(()=>{if(repState&&repState.until&&Date.now()>=repState.until){repState=null;if(!$("ticks").hidden)renderTicks()}},20500)}
+    catch(err){repState=null;setStatus(err&&err.code==="bad_pin"?"Only Yehuda and Eli can make the report.":err instanceof SyntaxError?"Couldn't make the report: the script needs authorising. Open Apps Script and run testReport once.":err&&err.message?"Couldn't make the report: "+err.message:"Couldn't make the report.",true)}
+    renderTicks()}
 });
 $("openTicks").onclick=async()=>{$("ticks").hidden=false;if(!localMode&&!recipes)await loadRecipes();await loadRecords();renderTicks();$("ticks").scrollIntoView({block:"start"})};
 
 /* Top stage buttons */
 function markStage(){$("goWeigh").classList.toggle("on",!$("weigh").hidden);$("goTicks").classList.toggle("on",!$("ticks").hidden);
-  $("goPlan").classList.toggle("on",$("weigh").hidden&&$("ticks").hidden)}
+  $("goPlan").classList.toggle("on",$("weigh").hidden&&$("ticks").hidden);
+  $("panel").hidden=!$("weigh").hidden||!$("ticks").hidden}
 $("goPlan").onclick=()=>{$("weigh").hidden=true;$("ticks").hidden=true;markStage();$("panel").scrollIntoView({block:"start"})};
 $("goWeigh").onclick=()=>{$("ticks").hidden=true;$("openWeigh").click();markStage()};
 $("goTicks").onclick=async()=>{$("weigh").hidden=true;await $("openTicks").onclick();markStage()};
