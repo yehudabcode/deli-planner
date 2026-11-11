@@ -175,6 +175,8 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 .tnav .pos{color:var(--muted);font-weight:600}
 .wbtn.okbtn{background:var(--ok);border-color:var(--ok);color:#fff}
 .repopts{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center}
+.flrep{margin:6px 0 2px;padding:8px 10px;border-left:4px solid var(--ok);background:rgba(127,127,127,.06);font-size:14px;font-weight:400}
+.flrep.bad{border-left-color:var(--warn)}
 .tcard .flags{margin:8px 0 0}
 .tcard .flags p{margin:2px 0;color:var(--warn);font-weight:700}
 .tcard .saved{font-size:12px;color:var(--muted)}
@@ -775,10 +777,64 @@ function inp(key,path,val,attrs){return `<input data-rk="${esc(key)}" data-k="${
 function chkInputs(key,i,r,rec,ctx){
   const v=rec.vals[i]||{}, c=r.chk||"";
   if(c==="cool8")return `<div class="chk"><label>Temp °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><span class="meta">must be ≤8°C</span></div>`;
-  if(c.startsWith("program:")){const pn=c.slice(8);return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label><span class="meta">Type <b>${esc(ctx.code)}</b> into Batch Number in FOOD.LOG</span></div>`}
+  if(c.startsWith("program:")){const pn=c.slice(8),fl=v.fl,tg=coreTarget(ctx);
+    const flBox=fl?`<div class="flrep${fl.coreMax!=null&&tg&&fl.coreMax<tg?" bad":""}"><b>FOOD.LOG:</b> ${esc(fl.name||"")} · ${esc(fl.start||"")} → ${esc((fl.end||"").slice(11))} · ${esc(fl.dur||"")}<br>
+      Core max <b>${fl.coreMax??"—"}°C</b>${tg?` (target ${tg}°C)`:""} · Chamber max ${fl.chMax??"—"}°C · Humidity max ${fl.humMax??"—"}%${fl.url?` · <a href="${esc(fl.url)}" target="_blank" rel="noopener">PDF</a>`:""}</div>`:"";
+    return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label>${localMode?"":`<button type="button" class="wbtn noprint" data-flup="${esc(key)}" data-fli="${i}">${fl?"Replace":"Upload"} FOOD.LOG report</button>`}</div>${flBox}`}
   if(c==="weight")return `<div class="chk"><label>Weight after kg ${inp(key,"vals."+i+".kg",v.kg,'type="number" step="0.1" inputmode="decimal"')}</label>${ctx.target?`<span class="meta">target ${fmt(ctx.target)} kg</span>`:""}</div>`;
   if(c==="core")return `<div class="chk"><label>Core reached °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><label>An hour later °C ${inp(key,"vals."+i+".t2",v.t2,'type="number" step="0.1"')}</label></div>`;
   return "";
+}
+/* Smokehouse core temperature targets (°C) by product id, and optionally "id|Stage". Eli to confirm; blank = no pass/fail check. */
+const CORE_TARGET={};
+function coreTarget(x){const id=x&&x.pid;if(!id)return null;return CORE_TARGET[id+"|"+(x.stage||"")]??CORE_TARGET[id]??null}
+let pdfjsReady=null;
+function loadPdfJs(){
+  if(pdfjsReady)return pdfjsReady;
+  const base="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  pdfjsReady=new Promise((res,rej)=>{const sc=document.createElement("script");sc.src=base+"pdf.min.js";
+    sc.onload=()=>{window.pdfjsLib.GlobalWorkerOptions.workerSrc=base+"pdf.worker.min.js";res(window.pdfjsLib)};
+    sc.onerror=()=>{pdfjsReady=null;rej(new Error("Couldn't load the PDF reader. Check the internet connection."))};document.head.appendChild(sc)});
+  return pdfjsReady;
+}
+async function pdfLines(buf){
+  const lib=await loadPdfJs();const doc=await lib.getDocument({data:buf.slice(0)}).promise;const out=[];
+  for(let n=1;n<=doc.numPages;n++){const pg=await doc.getPage(n);const tc=await pg.getTextContent();const rows=[];
+    tc.items.forEach(it=>{if(!it.str||!it.str.trim())return;const x=it.transform[4],y=it.transform[5];
+      let r=rows.find(r=>Math.abs(r.y-y)<3);if(!r){r={y,items:[]};rows.push(r)}r.items.push({x,s:it.str.trim()})});
+    rows.sort((a,b)=>b.y-a.y).forEach(r=>out.push(r.items.sort((a,b)=>a.x-b.x).map(i=>i.s).join(" ")))}
+  return out;
+}
+function parseFoodLog(lines){
+  const all=lines.join("\n"),D="(\\d{2}\/\\d{2}\/\\d{4} \\d{2}:\\d{2}:\\d{2})";
+  if(!/Recipe Protocol/.test(all)||!/Core temperature/.test(all))return null;
+  const m=(re)=>{const x=all.match(re);return x?x[1]:null};
+  const pair=lbl=>{const x=all.match(new RegExp(lbl+"\\s+(-?[\\d.]+)\\s+(-?[\\d.]+)"));return x?[+x[1],+x[2]]:[null,null]};
+  const iT=lines.findIndex(l=>/^T\d+/.test(l)),iS=lines.findIndex(l=>/^Start\b/.test(l));
+  const nameBits=iT>=0&&iS>iT?lines.slice(iT+1,iS).filter(l=>!/^\d+$/.test(l.trim())):[];
+  const recNo=iT>=0&&iS>iT?(lines.slice(iT+1,iS).find(l=>/^\d+$/.test(l.trim()))||""):"";
+  const core=pair("Core temperature"),ch=pair("Chamber temperature"),hu=pair("Humidity");
+  return {name:nameBits.join(" ").trim(),recipe:recNo.trim(),start:m(new RegExp("Start\\s+"+D)),end:m(new RegExp("End\\s+"+D)),
+    dur:m(/Duration\s+([\d:.]+\s*(?:min|h|s))/),coreMin:core[0],coreMax:core[1],chMin:ch[0],chMax:ch[1],humMin:hu[0],humMax:hu[1],
+    unit:(lines[0]&&/Recipe Protocol/.test(lines[0])?lines[1]:"")||""};
+}
+function b64(buf){let s="";const u=new Uint8Array(buf);for(let i=0;i<u.length;i+=0x8000)s+=String.fromCharCode.apply(null,u.subarray(i,i+0x8000));return btoa(s)}
+async function uploadFoodLog(key,i,file){
+  const rec=records[key];if(!rec)return;const sv=$("sv-"+key);const say=t=>{if(sv)sv.textContent=t};
+  try{
+    say("Reading the FOOD.LOG report…");
+    const buf=await file.arrayBuffer();const fl=parseFoodLog(await pdfLines(buf));
+    if(!fl||!fl.start){say("");alert("That doesn't look like a FOOD.LOG 'History product program Report' PDF. Export it from FOOD.LOG > Reports and try again.");return}
+    const day=fl.start.slice(0,10).split("/").reverse().join("-");
+    if(rec.date&&day!==rec.date&&!confirm(`This cook started on ${fl.start.slice(0,10)}, but this tick list is for ${rec.date.split("-").reverse().join("/")}. Use it anyway?`)){say("");return}
+    const dup=Object.values(records).find(r=>r.key!==key&&Object.values(r.vals||{}).some(v=>v&&v.fl&&v.fl.start===fl.start));
+    if(dup&&!confirm(`This FOOD.LOG cook (${fl.start}) is already attached to ${dup.product} ${dup.code||""}. Attach it here too?`)){say("");return}
+    say("Saving the PDF…");
+    const j=await api("flupload",null,{week:weekId,key,name:`FOOD.LOG ${rec.code||rec.product} ${fl.start.replace(/[\/:]/g,"-")}.pdf`,data:b64(buf)});
+    Object.assign(fl,j.file||{});
+    rec.vals[i]=rec.vals[i]||{};const v=rec.vals[i];v.fl=fl;if(!v.start)v.start=fl.start.slice(11,16);
+    summarise(rec,tickCtx[key]||[]);lastTickEdit=Date.now();renderTicks();saveRec(key);renderBoard();
+  }catch(e){say("");alert("Couldn't attach the FOOD.LOG report: "+((e&&e.message)||(e&&e.code)||e))}
 }
 function flagsOf(rec,rows){
   const f=[];const it=rec.intake||{};
@@ -786,6 +842,7 @@ function flagsOf(rec,rows){
   rows.forEach((r,i)=>{const v=rec.vals[i]||{};
     if(r.chk==="cool8"&&v.t!==undefined&&v.t!==""&&+v.t>8)f.push(`${r.ing}: ${v.t}°C is over 8°C`+(rec.note?"":" (note needed)"));
     if(r.chk==="core"&&v.t!==undefined&&v.t!==""&&+v.t<56)f.push(`Sous vide core ${v.t}°C is below the 56°C target`);
+    if(r.chk&&r.chk.startsWith("program:")&&v.fl&&v.fl.coreMax!=null){const tg=coreTarget(rec);if(tg&&v.fl.coreMax<tg)f.push(`Smokehouse core max ${v.fl.coreMax}°C is below the ${tg}°C target`)}
   });
   return f;
 }
@@ -794,7 +851,8 @@ function summarise(rec,rows){
   if(rec.hasIntake)checks.push({label:"Intake temp",value:it.t!==undefined&&it.t!==""?it.t+"°C at "+(it.time||"—"):""});
   rows.forEach((r,i)=>{const v=rec.vals[i]||{};if(!r.chk)return;
     if(r.chk==="cool8")checks.push({label:r.ing,value:v.t?v.t+"°C at "+(v.time||"—"):""});
-    else if(r.chk.startsWith("program:"))checks.push({label:r.ing,value:"Program "+(v.prog||r.chk.slice(8))+(v.start?" started "+v.start:"")});
+    else if(r.chk.startsWith("program:")){const fl=v.fl;checks.push({label:r.ing,value:"Program "+(v.prog||r.chk.slice(8))+(v.start?" started "+v.start:"")+
+      (fl?` · FOOD.LOG ${fl.start||""} to ${(fl.end||"").slice(11)}, core max ${fl.coreMax??"—"}°C, chamber max ${fl.chMax??"—"}°C`:" · no FOOD.LOG report uploaded")})}
     else if(r.chk==="weight")checks.push({label:r.ing,value:v.kg?v.kg+" kg":""});
     else if(r.chk==="core")checks.push({label:r.ing,value:v.t?v.t+"°C at "+(v.time||"—")+(v.t2?", "+v.t2+"°C an hour later":""):""});
   });
@@ -805,7 +863,7 @@ const tickCtx={}; // key -> rows (for flags on change)
 function tickCard(o){
   // o: {key,title,meta,code,kg,rows,factor,hasIntake,extraTop,extraRow(chk),target,product,stage,dayKey}
   const rec=recOf(o.key,{day:o.dayKey,date:o.date,code:o.code,product:o.product,stage:o.stage,kg:o.kg,hasIntake:o.hasIntake});
-  Object.assign(rec,{date:o.date,code:o.code,product:o.product,stage:o.stage,kg:o.kg,hasIntake:o.hasIntake});
+  Object.assign(rec,{date:o.date,code:o.code,product:o.product,pid:o.pid,stage:o.stage,kg:o.kg,hasIntake:o.hasIntake});
   tickCtx[o.key]=o.rows;
   const staffSel=STAFF.length?`<select data-rk="${esc(o.key)}" data-k="staff"><option value="">—</option>${STAFF.map(n=>`<option${rec.staff===n?" selected":""}>${esc(n)}</option>`).join("")}</select>`:inp(o.key,"staff",rec.staff,'type="text" class="wide"');
   const it=rec.intake||{};
@@ -886,7 +944,7 @@ function ticksFor(dayKey){
         code:codes[bi],kg:unitOk?Math.round(each*100)/100:null,rows,factor:()=>each,
         hasIntake:!isWhole||isFirstStage(p,l),extraRow,extraTop:rauch,
         target:p.pickup&&stg===(p.tumble||stagesOf(p)[0])?Math.round(each*(1+p.pickup)*10)/10:null,
-        product:p.name,stage:stg,dayKey,date});
+        product:p.name,pid:p.id,stage:stg,dayKey,date});
     }
   }
   return html;
@@ -921,6 +979,9 @@ function onTick(e){
 $("ticks").addEventListener("input",onTick);
 $("ticks").addEventListener("change",e=>{if(e.target.type==="checkbox"||e.target.tagName==="SELECT")onTick(e)});
 $("ticks").addEventListener("click",async e=>{
+  const fu=e.target.closest("[data-flup]");
+  if(fu){const f=document.createElement("input");f.type="file";f.accept="application/pdf,.pdf";
+    f.onchange=()=>{if(f.files[0])uploadFoodLog(fu.dataset.flup,+fu.dataset.fli,f.files[0])};f.click();return}
   const op=e.target.closest("[data-open]"),nv=e.target.closest("[data-tnav]"),rp=e.target.closest("[data-rep]");
   if(op){tickOpen=op.dataset.open;renderTicks();$("ticks").scrollIntoView({block:"start"});return}
   if(nv){const i=tickList.findIndex(t=>t.key===tickOpen),a=nv.dataset.tnav;

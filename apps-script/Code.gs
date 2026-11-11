@@ -166,16 +166,19 @@ function makeReport_(week, mode) {
     folder.createFile(f);
   });
   const flagged = recs.filter(function (r) { return (r.flags || []).length; });
+  const flPdfs = [];
+  recs.forEach(function (r) { Object.keys(r.vals || {}).forEach(function (k) { const v = r.vals[k];
+    if (v && v.fl && v.fl.id) { try { flPdfs.push(DriveApp.getFileById(v.fl.id).getBlob()); } catch (e) {} } }); });
   const to = props_().getProperty('REPORT_EMAILS');
   const sendMail = !!to && (mode === 'email' || mode === 'both');
   if (sendMail) {
     MailApp.sendEmail({
       to: to,
       subject: 'Deli HACCP report – w/c ' + week + (flagged.length ? ' – ' + flagged.length + ' flagged' : ''),
-      htmlBody: '<p>Attached: the full week plus one PDF per product (' + recs.length + ' tick lists).</p>' +
+      htmlBody: '<p>Attached: the full week plus one PDF per product (' + recs.length + ' tick lists), and ' + flPdfs.length + ' FOOD.LOG cook report(s).</p>' +
         (flagged.length ? '<p><b>Flagged:</b><br>' + flagged.map(function (r) { return esc_(r.product + ' ' + r.code + ': ' + r.flags.join(', ')); }).join('<br>') + '</p>' : '<p>Nothing flagged.</p>') +
         '<p>Saved in Google Drive: <a href="' + folder.getUrl() + '">' + esc_(folder.getName()) + '</a></p>',
-      attachments: files
+      attachments: files.concat(flPdfs)
     });
   }
   const out = { folder: folder.getUrl(), count: recs.length, flagged: flagged.length, emailed: sendMail };
@@ -244,6 +247,14 @@ function doPost(e) {
     if (!r || !r.key || !validWeek_(r.week)) return json_({ ok: false, code: 'bad_body' });
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { saveRecord_(r); return json_({ ok: true }); } finally { lock.releaseLock(); }
+  }
+  if (body.action === 'flupload') {
+    if (!validWeek_(body.week) || !body.data) return json_({ ok: false, code: 'bad_body' });
+    const folder = reportFolder_(body.week);
+    const name = String(body.name || 'FOOD.LOG report.pdf').replace(/[\\/]/g, '-');
+    const old = folder.getFilesByName(name); while (old.hasNext()) old.next().setTrashed(true);
+    const f = folder.createFile(Utilities.newBlob(Utilities.base64Decode(body.data), 'application/pdf', name));
+    return json_({ ok: true, file: { id: f.getId(), url: f.getUrl(), file: name } });
   }
   if (body.action === 'report') {
     if (!checkPin_(body.pin)) return json_({ ok: false, code: 'bad_pin' });
