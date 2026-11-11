@@ -752,7 +752,7 @@ let records={}, recWeek=null; const recTimers={};
 async function loadRecords(){
   if(recWeek===weekId)return; const wk=weekId;
   if(localMode){try{records=JSON.parse(ls("deli.rec."+wk)||"{}")}catch(e){records={}}recWeek=wk;return}
-  try{const j=await api("records",{week:wk});if(wk!==weekId)return;records={};(j.records||[]).forEach(r=>records[r.key]=r);recWeek=wk}
+  try{const [j]=await Promise.all([api("records",{week:wk}),loadCooks(wk)]);if(wk!==weekId)return;records={};(j.records||[]).forEach(r=>records[r.key]=r);recWeek=wk}
   catch(e){setStatus("Couldn't load tick list records.",true)}
 }
 function lineDone(dayKey,p,l){
@@ -765,8 +765,8 @@ let lastTickEdit=0;
 async function refreshRecords(){ // pick up ticks done on other devices
   if(localMode||Date.now()-lastTickEdit<5000||Object.keys(recTimers).some(k=>recTimers[k])||$("ticks").contains(document.activeElement))return;
   const wk=weekId;
-  try{const j=await api("records",{week:wk});if(wk!==weekId||Date.now()-lastTickEdit<5000)return;
-    const next={};(j.records||[]).forEach(r=>next[r.key]=r);records=next;recWeek=wk;renderBoard()}catch(e){}
+  try{const [j]=await Promise.all([api("records",{week:wk}),loadCooks(wk)]);if(wk!==weekId||Date.now()-lastTickEdit<5000)return;
+    const next={};(j.records||[]).forEach(r=>next[r.key]=r);records=next;recWeek=wk;renderBoard();if(!$("ticks").hidden&&!$("ticks").contains(document.activeElement))renderTicks()}catch(e){}
 }
 function recOf(key,meta){return records[key]||(records[key]={key,week:weekId,ticks:{},vals:{},...meta})}
 function tickRows(p,l){
@@ -778,9 +778,12 @@ function chkInputs(key,i,r,rec,ctx){
   const v=rec.vals[i]||{}, c=r.chk||"";
   if(c==="cool8")return `<div class="chk"><label>Temp °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><span class="meta">must be ≤8°C</span></div>`;
   if(c.startsWith("program:")){const pn=c.slice(8),fl=v.fl,tg=coreTarget(ctx);
-    const flBox=fl?`<div class="flrep${fl.coreMax!=null&&tg&&fl.coreMax<tg?" bad":""}"><b>FOOD.LOG:</b> ${esc(fl.name||"")} · ${esc(fl.start||"")} → ${esc((fl.end||"").slice(11))} · ${esc(fl.dur||"")}<br>
+    const flBox=fl?`<div class="flrep${fl.coreMax!=null&&tg&&fl.coreMax<tg?" bad":""}"><b>FOOD.LOG${fl.eid?"":" (PDF)"}:</b> ${esc(fl.name||"")} · ${esc(fl.start||"")} → ${esc((fl.end||"").slice(11))} · ${esc(fl.dur||"")}<br>
       Core max <b>${fl.coreMax??"—"}°C</b>${tg?` (target ${tg}°C)`:""} · Chamber max ${fl.chMax??"—"}°C · Humidity max ${fl.humMax??"—"}%${fl.url?` · <a href="${esc(fl.url)}" target="_blank" rel="noopener">PDF</a>`:""}</div>`:"";
-    return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label>${localMode?"":`<button type="button" class="wbtn noprint" data-flup="${esc(key)}" data-fli="${i}">${fl?"Replace":"Upload"} FOOD.LOG report</button>`}</div>${flBox}`}
+    const opts=cooksFor(ctx.date,fl&&fl.eid).map(c=>{const used=cookUsedBy(c.eid,key);
+      return `<option value="${esc(c.eid)}"${fl&&fl.eid===c.eid?" selected":""}>${esc(c.start.slice(11,16))} ${esc(c.name)} · core max ${c.coreMax??"—"}°C${used?" · already used: "+esc(used):""}</option>`}).join("");
+    const pick=localMode?"":`<label class="noprint">Smokehouse cycle <select data-cookfor="${esc(key)}" data-fli="${i}"><option value="">${opts?"— choose the FOOD.LOG cycle —":"No cycles synced for this day yet"}</option>${opts}</select></label>`;
+    return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label>${pick}${localMode?"":`<button type="button" class="wbtn noprint" data-flup="${esc(key)}" data-fli="${i}">${fl&&!fl.eid?"Replace":"Upload"} PDF instead</button>`}</div>${flBox}`}
   if(c==="weight")return `<div class="chk"><label>Weight after kg ${inp(key,"vals."+i+".kg",v.kg,'type="number" step="0.1" inputmode="decimal"')}</label>${ctx.target?`<span class="meta">target ${fmt(ctx.target)} kg</span>`:""}</div>`;
   if(c==="core")return `<div class="chk"><label>Core reached °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><label>An hour later °C ${inp(key,"vals."+i+".t2",v.t2,'type="number" step="0.1"')}</label></div>`;
   return "";
@@ -788,6 +791,23 @@ function chkInputs(key,i,r,rec,ctx){
 /* Smokehouse core temperature targets (°C) by product id, and optionally "id|Stage". Eli to confirm; blank = no pass/fail check. */
 const CORE_TARGET={};
 function coreTarget(x){const id=x&&x.pid;if(!id)return null;return CORE_TARGET[id+"|"+(x.stage||"")]??CORE_TARGET[id]??null}
+let cooks=[];
+async function loadCooks(wk){if(localMode)return;try{const j=await api("cooks",{week:wk});if(wk===weekId)cooks=Array.isArray(j.cooks)?j.cooks:[]}catch(e){}}
+const isCleaningName=n=>/CLEAN|RINS|TEST/i.test(n||"");
+function cooksFor(date,keepEid){return cooks.filter(c=>String(c.type)==="1"&&!isCleaningName(c.name)&&(c.start.slice(0,10)===date||c.eid===keepEid))}
+function cookUsedBy(eid,exceptKey){const r=Object.values(records).find(r=>r.key!==exceptKey&&Object.values(r.vals||{}).some(v=>v&&v.fl&&v.fl.eid===eid));return r?`${r.product} ${r.code||""}`.trim():""}
+function ukTime(iso){if(!iso)return "";const [d,t]=iso.split("T");return d.split("-").reverse().join("/")+" "+(t||"")}
+function cookToFl(c){const mins=c.end&&c.start?Math.round((new Date(c.end)-new Date(c.start))/60000):null;
+  return {eid:c.eid,src:"sync",name:c.name,recipe:c.recipe,start:ukTime(c.start),end:ukTime(c.end),dur:mins!=null?(mins>=120?`${Math.floor(mins/60)}:${String(mins%60).padStart(2,"0")} h`:`${mins} min`):"",
+    coreMin:c.coreMin,coreMax:c.coreMax,chMin:c.chMin,chMax:c.chMax,humMin:c.humMin,humMax:c.humMax}}
+function pickCook(key,i,eid){
+  const rec=records[key];if(!rec)return;rec.vals[i]=rec.vals[i]||{};const v=rec.vals[i];
+  if(!eid){if(v.fl&&v.fl.eid)delete v.fl}
+  else{const c=cooks.find(c=>c.eid===eid);if(!c)return;const used=cookUsedBy(eid,key);
+    if(used&&!confirm(`This cycle is already linked to ${used}. Link it here too?`)){renderTicks();return}
+    v.fl=cookToFl(c);v.start=c.start.slice(11,16)}
+  summarise(rec,tickCtx[key]||[]);lastTickEdit=Date.now();renderTicks();saveRec(key);renderBoard();
+}
 let pdfjsReady=null;
 function loadPdfJs(){
   if(pdfjsReady)return pdfjsReady;
@@ -977,7 +997,8 @@ function onTick(e){
   saveRec(key);
 }
 $("ticks").addEventListener("input",onTick);
-$("ticks").addEventListener("change",e=>{if(e.target.type==="checkbox"||e.target.tagName==="SELECT")onTick(e)});
+$("ticks").addEventListener("change",e=>{if(e.target.dataset.cookfor){pickCook(e.target.dataset.cookfor,+e.target.dataset.fli,e.target.value);return}
+  if(e.target.type==="checkbox"||e.target.tagName==="SELECT")onTick(e)});
 $("ticks").addEventListener("click",async e=>{
   const fu=e.target.closest("[data-flup]");
   if(fu){const f=document.createElement("input");f.type="file";f.accept="application/pdf,.pdf";

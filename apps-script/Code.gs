@@ -113,6 +113,61 @@ function saveRecord_(rec) {
   sh.getRange(row, 1, 1, vals[0].length).setValues(vals);
 }
 
+/* ---------- Smokehouse cooks (sent from Eli's PC by tools/FOODLOG-sync.ps1) ---------- */
+// FOOD.LOG analog channels: 1 = chamber °C, 2 = core °C, 3 = humidity % (checked against a FOOD.LOG PDF)
+const COOK_HEADERS = ['Event id', 'Start', 'End', 'Program', 'Recipe no', 'Completed', 'Error', 'Type',
+  'Chamber min', 'Chamber max', 'Core min', 'Core max', 'Humidity min', 'Humidity max', 'Readings', 'Synced'];
+function cooksSheet_() { return sheet_('Smokehouse', COOK_HEADERS); }
+function num_(v) { return v === '' || v == null || isNaN(Number(v)) ? null : Math.round(Number(v) * 10) / 10; }
+function saveCooks_(cooks) {
+  const sh = cooksSheet_();
+  const last = sh.getLastRow();
+  const ids = last > 1 ? sh.getRange(2, 1, last - 1, 1).getValues().map(function (r) { return String(r[0]); }) : [];
+  const now = new Date();
+  let added = 0, updated = 0;
+  cooks.forEach(function (c) {
+    if (!c || c.id == null) return;
+    const row = [String(c.id), "'" + (c.start || ''), "'" + (c.end || ''), c.program || '', c.recipe == null ? '' : c.recipe, c.completed ? 'yes' : 'no',
+      c.error == null ? '' : c.error, c.type == null ? '' : c.type,
+      num_(c.c1min), num_(c.c1max), num_(c.c2min), num_(c.c2max), num_(c.c3min), num_(c.c3max), c.n || 0, now];
+    const i = ids.indexOf(String(c.id));
+    if (i >= 0) { sh.getRange(i + 2, 1, 1, row.length).setValues([row]); updated++; }
+    else { sh.appendRow(row); ids.push(String(c.id)); added++; }
+  });
+  return { added: added, updated: updated };
+}
+function readCooks_(week) {
+  const sh = cooksSheet_();
+  const last = sh.getLastRow();
+  if (last < 2) return [];
+  const from = week, to = Utilities.formatDate(new Date(new Date(week + 'T12:00:00').getTime() + 7 * 864e5), 'Europe/London', 'yyyy-MM-dd');
+  return sh.getRange(2, 1, last - 1, COOK_HEADERS.length).getValues()
+    .map(function (r) {
+      return { eid: String(r[0]), start: String(r[1]), end: String(r[2]), name: String(r[3]), recipe: r[4], completed: r[5] === 'yes',
+        error: r[6], type: r[7], chMin: num_(r[8]), chMax: num_(r[9]), coreMin: num_(r[10]), coreMax: num_(r[11]),
+        humMin: num_(r[12]), humMax: num_(r[13]), n: r[14], synced: r[15] ? Utilities.formatDate(new Date(r[15]), 'Europe/London', 'dd/MM/yyyy HH:mm') : '' };
+    })
+    .filter(function (c) { const d = c.start.slice(0, 10); return d >= from && d < to; })
+    .sort(function (a, b) { return a.start.localeCompare(b.start); });
+}
+function isCleaning_(name) { return /CLEAN|RINS|TEST/i.test(name || ''); }
+function cooksHtml_(week, recs) {
+  const cooks = readCooks_(week);
+  const linked = {};
+  recs.forEach(function (r) { Object.keys(r.vals || {}).forEach(function (k) { const v = r.vals[k];
+    if (v && v.fl && v.fl.eid) (linked[v.fl.eid] = linked[v.fl.eid] || []).push((r.product || '') + ' ' + (r.code || '')); }); });
+  if (!cooks.length) return '<h2>Smokehouse (FOOD.LOG)</h2><p class="bad">No smokehouse data for this week. Check the FOOD.LOG sync on Eli\'s PC.</p>';
+  const rows = cooks.map(function (c) {
+    const clean = isCleaning_(c.name), alarm = String(c.type) !== '1';
+    const link = linked[c.eid] ? esc_(linked[c.eid].join(', ')) : (clean || alarm ? '' : '<span class="bad">not linked to a batch</span>');
+    return '<tr><td>' + esc_(c.start.replace('T', ' ').slice(0, 16)) + '</td><td>' + esc_((c.end || '').replace('T', ' ').slice(11, 16)) + '</td><td>' +
+      esc_(c.name) + (alarm ? ' (alarm' + (c.error ? ' ' + esc_(c.error) : '') + ')' : '') + '</td><td>' + (c.coreMax == null ? '—' : c.coreMax + '°C') +
+      '</td><td>' + (c.chMax == null ? '—' : c.chMax + '°C') + '</td><td>' + link + '</td></tr>';
+  }).join('');
+  return '<h2>Smokehouse (FOOD.LOG) – every cycle this week</h2><table><tr><td><b>Start</b></td><td><b>End</b></td><td><b>Program</b></td><td><b>Core max</b></td><td><b>Chamber max</b></td><td><b>Batch</b></td></tr>' +
+    rows + '</table>';
+}
+
 /* ---------- Weekly HACCP report ---------- */
 function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
@@ -137,13 +192,13 @@ function recordHtml_(r) {
     '<table>' + checks + '</table>' + (r.note ? '<p>Note: ' + esc_(r.note) + '</p>' : '') + '</div>';
 }
 
-function reportDoc_(title, recs, week) {
+function reportDoc_(title, recs, week, extra) {
   const css = 'body{font-family:Arial,sans-serif;font-size:11px;color:#000}h1{font-size:18px}h2{font-size:14px;margin:14px 0 4px;border-bottom:1px solid #000}' +
     'h3{font-size:12px;margin:8px 0 2px}.rec{page-break-inside:avoid;border-bottom:1px solid #ccc;padding:4px 0}table{border-collapse:collapse}' +
     'td{border:1px solid #ccc;padding:2px 6px}.bad{color:#b00;font-weight:bold}';
   return '<html><head><style>' + css + '</style></head><body><h1>' + esc_(title) + '</h1><p>Week commencing ' + esc_(week) +
     ' · made ' + Utilities.formatDate(new Date(), 'Europe/London', 'dd/MM/yyyy HH:mm') + ' · ' + recs.length + ' tick list(s)</p>' +
-    recs.map(recordHtml_).join('') + '</body></html>';
+    recs.map(recordHtml_).join('') + (extra || '') + '</body></html>';
 }
 
 function makeReport_(week, mode) {
@@ -153,7 +208,9 @@ function makeReport_(week, mode) {
   const files = [];
   const byProduct = {};
   recs.forEach(function (r) { (byProduct[r.product] = byProduct[r.product] || []).push(r); });
-  const full = Utilities.newBlob(reportDoc_('Deli HACCP report – full week', recs, week), 'text/html', 'x.html')
+  let cooksPart = '';
+  try { cooksPart = cooksHtml_(week, recs); } catch (e) { cooksPart = '<p class="bad">Smokehouse section failed: ' + esc_(e.message) + '</p>'; }
+  const full = Utilities.newBlob(reportDoc_('Deli HACCP report – full week', recs, week, cooksPart), 'text/html', 'x.html')
     .getAs('application/pdf').setName('HACCP week ' + week + ' – ALL.pdf');
   files.push(full);
   Object.keys(byProduct).sort().forEach(function (p) {
@@ -230,6 +287,10 @@ function doGet(e) {
     const staff = String(props_().getProperty('STAFF') || '').split(',').map(function (x) { return x.trim(); }).filter(String);
     return json_({ ok: true, recipes: readRecipes_(), staff: staff });
   }
+  if (p.action === 'cooks') {
+    if (!validWeek_(p.week)) return json_({ ok: false, code: 'bad_week' });
+    return json_({ ok: true, cooks: readCooks_(p.week) });
+  }
   if (p.action === 'records') {
     if (!validWeek_(p.week)) return json_({ ok: false, code: 'bad_week' });
     return json_({ ok: true, records: readRecords_(p.week) });
@@ -247,6 +308,11 @@ function doPost(e) {
     if (!r || !r.key || !validWeek_(r.week)) return json_({ ok: false, code: 'bad_body' });
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { saveRecord_(r); return json_({ ok: true }); } finally { lock.releaseLock(); }
+  }
+  if (body.action === 'cooks') {
+    if (!Array.isArray(body.cooks)) return json_({ ok: false, code: 'bad_body' });
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    try { return json_({ ok: true, result: saveCooks_(body.cooks) }); } finally { lock.releaseLock(); }
   }
   if (body.action === 'flupload') {
     if (!validWeek_(body.week) || !body.data) return json_({ ok: false, code: 'bad_body' });
@@ -298,4 +364,4 @@ function doPost(e) {
 }
 
 /** Optional: run once from the editor to check the sheet tabs get created. */
-function setupSheets() { plansSheet_(); logSheet_(); recipesSheet_(); recordsSheet_(); }
+function setupSheets() { plansSheet_(); logSheet_(); recipesSheet_(); recordsSheet_(); cooksSheet_(); }
