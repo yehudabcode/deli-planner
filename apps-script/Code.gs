@@ -159,10 +159,13 @@ function cooksHtml_(week, recs) {
   if (!cooks.length) return '<h2>Smokehouse (FOOD.LOG)</h2><p class="bad">No smokehouse data for this week. Check the FOOD.LOG sync on Eli\'s PC.</p>';
   const rows = cooks.map(function (c) {
     const clean = isCleaning_(c.name), alarm = String(c.type) !== '1';
+    const secs = c.end && c.start ? (new Date(c.end) - new Date(c.start)) / 1000 : 0;
+    const cover = alarm ? 1 : Math.min(1, (Number(c.n) || 0) / Math.max(1, Math.floor(secs / 30)));
+    const gap = !alarm && cover < 0.9 ? ' <span class="bad">temperatures ' + Math.round(cover * 100) + '% recorded</span>' : '';
     const link = linked[c.eid] ? esc_(linked[c.eid].join(', ')) : (clean || alarm ? '' : '<span class="bad">not linked to a batch</span>');
     return '<tr><td>' + esc_(c.start.replace('T', ' ').slice(0, 16)) + '</td><td>' + esc_((c.end || '').replace('T', ' ').slice(11, 16)) + '</td><td>' +
       esc_(c.name) + (alarm ? ' (alarm' + (c.error ? ' ' + esc_(c.error) : '') + ')' : '') + '</td><td>' + (c.coreMax == null ? '—' : c.coreMax + '°C') +
-      '</td><td>' + (c.chMax == null ? '—' : c.chMax + '°C') + '</td><td>' + link + '</td></tr>';
+      '</td><td>' + (c.chMax == null ? '—' : c.chMax + '°C') + gap + '</td><td>' + link + '</td></tr>';
   }).join('');
   return '<h2>Smokehouse (FOOD.LOG) – every cycle this week</h2><table><tr><td><b>Start</b></td><td><b>End</b></td><td><b>Program</b></td><td><b>Core max</b></td><td><b>Chamber max</b></td><td><b>Batch</b></td></tr>' +
     rows + '</table>';
