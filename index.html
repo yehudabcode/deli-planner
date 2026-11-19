@@ -150,16 +150,20 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 .tcard .fields label{display:flex;align-items:center;gap:6px}
 .tcard input[type=text],.tcard input[type=number],.tcard input[type=time],.tcard select,.tcard textarea{font:inherit;border:1px solid var(--line);border-radius:5px;padding:3px 6px;background:var(--surface);color:inherit}
 .tcard input[type=number]{width:72px}.tcard input.wide{width:140px}
-.tcard table{font-size:19px}
-.tcard td.ck{width:44px;vertical-align:middle}.tcard td.ck input{width:28px;height:28px}
-.tcard td.ing{width:1%;white-space:nowrap;padding-right:22px}
-.tcard td.ing small{white-space:normal;font-size:14px}
-.tcard td.n{text-align:left;font-weight:700;font-size:21px}
-.tcard tbody tr:nth-child(even) td{background:rgba(127,127,127,.08)}
-.tcard tr.step td{font-size:17px}
-.tcard tr.step td{font-weight:500}
-.tcard tr.step td.n{font-weight:400}
-.tcard .chk{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:4px;font-size:13px;font-weight:400}
+.tcard{max-width:820px;margin-left:auto;margin-right:auto}
+.tcard .ttl{text-align:center;font-size:24px;font-weight:700;text-decoration:underline;text-underline-offset:4px;margin:4px 0 2px;letter-spacing:.01em}
+.tcard .tsub{text-align:center;color:var(--muted);font-size:14px;margin-bottom:8px}
+.tcard .tsub b{color:var(--fg);font-variant-numeric:tabular-nums}
+.tcard table.tl{width:100%;border-collapse:collapse;font-size:19px;margin-top:8px}
+.tcard table.tl th,.tcard table.tl td{border:1px solid var(--fg);padding:7px 10px;text-align:center;vertical-align:middle}
+.tcard table.tl th{font-weight:600;font-size:18px;background:rgba(127,127,127,.18);text-transform:none;letter-spacing:normal;color:var(--fg)}
+.tcard td.ing{width:48%}
+.tcard td.ing small{display:block;font-size:14px;color:var(--muted)}
+.tcard td.n{width:30%;font-weight:700;font-size:21px;font-variant-numeric:tabular-nums}
+.tcard td.ck{width:22%}.tcard td.ck input{width:30px;height:30px}
+.tcard tr.step td{background:rgba(127,127,127,.2);font-size:18px;font-weight:500}
+.tcard tr.step td.ck{background:transparent}
+.tcard .chk{display:flex;flex-wrap:wrap;justify-content:center;gap:6px 12px;margin-top:6px;font-size:14px;font-weight:400}
 .tcard .chk label{display:flex;align-items:center;gap:4px}
 .day .items .ok{color:var(--ok);font-weight:800;margin-right:4px}
 .tmenu{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:12px}
@@ -189,6 +193,7 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
   #weigh .noprint,#ticks .noprint{display:none}
   .tcard{break-after:page}
   .tcard input,.tcard select,.tcard textarea{border:0;border-bottom:1px solid #000;border-radius:0}
+  .tcard table.tl th,.tcard table.tl td{border-color:#000}.tcard tr.step td{background:#ddd!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .wcard td.tick::before{content:"☐"}
 }
 @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
@@ -688,6 +693,7 @@ function rauchCard(p,l,noEry){
 }
 function recipeErrText(){return recipesErr==="bad_action"?"Couldn't load recipes: the Apps Script is still running the OLD code. Deploy > Manage deployments > pencil > Version: New version > Deploy."
   :"Couldn't load recipes ("+recipesErr+"). Check the Apps Script deployment."}
+const qfmt=g=>{if(!isFinite(g))return "";if(g>=5000){const k=Math.round(g/10)/100;return k+"kg"}return (Math.round(g*10)/10)+"g"};
 const gfmt=g=>g>=10?Math.round(g).toLocaleString("en-GB"):String(Math.round(g*10)/10);
 function recipeRows(p,l,mode){
   const isWhole=CATTYPE[p.cat]==="whole", st=stageOf(p,l);
@@ -890,19 +896,23 @@ function tickCard(o){
   tickCtx[o.key]=o.rows;
   const staffSel=STAFF.length?`<select data-rk="${esc(o.key)}" data-k="staff"><option value="">—</option>${STAFF.map(n=>`<option${rec.staff===n?" selected":""}>${esc(n)}</option>`).join("")}</select>`:inp(o.key,"staff",rec.staff,'type="text" class="wide"');
   const it=rec.intake||{};
-  const intake=o.hasIntake?`<label>Intake temp °C ${inp(o.key,"intake.t",it.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>Time ${inp(o.key,"intake.time",it.time,'type="time"')}</label><span class="meta">must be below 8°C, otherwise reject and note</span>`:"";
+  const intake=o.hasIntake?`<div class="fields"><label>Intake temperature less than 8°C: temp ${inp(o.key,"intake.t",it.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>time ${inp(o.key,"intake.time",it.time,'type="time"')}</label></div>`:"";
   const body=o.rows.map((r,i)=>{
     const ck=`<td class="ck"><input type="checkbox" data-rk="${esc(o.key)}" data-k="ticks.${i}"${rec.ticks[i]?" checked":""} aria-label="Done"></td>`;
     if(r.step){const extra=o.extraRow?o.extraRow(r):"";
-      return `<tr class="step">${ck}<td colspan="2">${esc(r.ing)}${chkInputs(o.key,i,r,rec,o)}</td></tr>${extra}`}
-    return `<tr>${ck}<td class="ing">${esc(r.ing)}${r.note?`<br><small>${esc(r.note)}</small>`:""}</td><td class="n">${gfmt(r.g*o.factor(r)/r.per)} g</td></tr>`;
+      return `<tr class="step"><td colspan="2">${esc(r.ing)}${chkInputs(o.key,i,r,rec,o)}</td>${ck}</tr>${extra}`}
+    return `<tr><td class="ing">${esc(r.ing)}${r.note?`<small>${esc(r.note)}</small>`:""}</td><td class="n">${qfmt(r.g*o.factor(r)/r.per)}</td>${ck}</tr>`;
   }).join("");
+  const brine=o.stage==="Brine",amt=o.kg?fmt(o.kg)+(brine?"L":"KG"):"";
+  const ukDate=o.date?o.date.split("-").reverse().join("/"):"";
   summarise(rec,o.rows);
   const html=`<div class="wcard tcard" data-card="${esc(o.key)}">
-    <h3>${esc(o.title)}${o.code?` · <span style="font-variant-numeric:tabular-nums">${esc(o.code)}</span>`:""}</h3><div class="meta">${esc(o.meta)}</div>
-    <div class="fields"><label>Staff ${staffSel}</label><label>Probe ID ${inp(o.key,"probe",rec.probe,'type="text" class="wide"')}</label>${intake}</div>
+    <div class="ttl">${esc(o.title.toUpperCase())} ${esc(amt)} CHECK LIST</div>
+    <div class="tsub">${o.code?`Batch <b>${esc(o.code)}</b> · `:""}${esc(o.meta)}</div>
+    <div class="fields"><label>${brine?"Made by":"Sausage maker"} ${staffSel}</label><label>Date <b>${esc(ukDate)}</b></label><label>Probe ID ${inp(o.key,"probe",rec.probe,'type="text" class="wide"')}</label></div>
+    ${intake}
     ${o.extraTop||""}
-    <table><tbody>${body||`<tr><td colspan="3" class="none">Method not loaded yet.</td></tr>`}</tbody></table>
+    <table class="tl"><thead><tr><th>Ingredients</th><th>Quantity${amt?" "+esc(amt.toLowerCase()):""}</th><th>Tick</th></tr></thead><tbody>${body||`<tr><td colspan="3" class="none">Method not loaded yet.</td></tr>`}</tbody></table>
     <textarea data-rk="${esc(o.key)}" data-k="note" placeholder="Notes / corrective action">${esc(rec.note||"")}</textarea>
     <div class="flags" id="fl-${esc(o.key)}">${rec.flags.map(x=>`<p>⚠ ${esc(x)}</p>`).join("")}</div>
     <div class="saved noprint" id="sv-${esc(o.key)}">${rec.updated?"Saved":""}</div>
@@ -957,13 +967,13 @@ function ticksFor(dayKey){
       const ch=p.chilli&&+l.ch>0?+l.ch/n:0;
       const extraRow=r=>{
         if(r.chk==="chilli"){if(!ch)return "";const cr=recipeRows(p,l,"chilli").filter(x=>!x.step);
-          return cr.map(x=>`<tr><td></td><td class="ing">${esc(x.ing)} (chilli, ${fmt(Math.round(ch*10)/10)} kg · ${esc(chilliCode(l,dayKey))})</td><td class="n">${gfmt(x.g*ch/x.per)} g</td></tr>`).join("")}
-        if(r.chk==="saltbeef"&&p.saltBeef){const pk=sbPerKg(p,l);return pk?`<tr><td></td><td class="ing">Cubed salt beef (prepped the day before)</td><td class="n">${fmt(Math.round(each*pk*10)/10)} kg</td></tr>`:""}
+          return cr.map(x=>`<tr><td class="ing">${esc(x.ing)}<small>chilli, ${fmt(Math.round(ch*10)/10)} kg · ${esc(chilliCode(l,dayKey))}</small></td><td class="n">${qfmt(x.g*ch/x.per)}</td><td class="ck"></td></tr>`).join("")}
+        if(r.chk==="saltbeef"&&p.saltBeef){const pk=sbPerKg(p,l);return pk?`<tr><td class="ing">Cubed salt beef<small>prepped the day before</small></td><td class="n">${fmt(Math.round(each*pk*10)/10)}kg</td><td class="ck"></td></tr>`:""}
         return "";
       };
       const rauch=p.calc==="equilibrium"&&isFirstStage(p,l)&&unitOk?rauchCard(p,{...l,qty:each},true):"";
       html+=tickCard({key:`${weekId}|${dayKey}|${l.id}|${bi+1}`,title:p.name+(isWhole?" · "+stg:""),
-        meta:[unitOk?fmt(Math.round(each*100)/100)+" kg "+(isWhole?"green weight":"meat block")+(n>1?` (batch ${bi+1} of ${n})`:""):"Quantity not in kg",l.v,l.note,shortDate(parseIso(date))].filter(Boolean).join(" · "),
+        meta:[unitOk?fmt(Math.round(each*100)/100)+" kg "+(isWhole?"green weight":"meat block")+(n>1?` (batch ${bi+1} of ${n})`:""):"Quantity not in kg",l.v,l.note].filter(Boolean).join(" · "),
         code:codes[bi],kg:unitOk?Math.round(each*100)/100:null,rows,factor:()=>each,
         hasIntake:!isWhole||isFirstStage(p,l),extraRow,extraTop:rauch,
         target:p.pickup&&stg===(p.tumble||stagesOf(p)[0])?Math.round(each*(1+p.pickup)*10)/10:null,
