@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smoker · Deli</title>
+<meta name="theme-color" content="#1d2428">
+<style>
+:root{--bg:#f3f5f6;--surface:#fff;--line:#d5dbdf;--fg:#1d2428;--muted:#5f6b72;--accent:#1f6f8b;--ok:#2f8a55;--warn:#b4541e;--core:#c9403f;--ch:#2f78bb;--hum:#7a8890;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;--body:"Barlow","Segoe UI",Arial,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#12171a;--surface:#1a2125;--line:#334048;--fg:#e6ecef;--muted:#9aa7ae;--accent:#5fb3d1;--ok:#5cc489;--warn:#ef9a62;--core:#e36b6a;--ch:#5a9ee0;--hum:#9aa7ae;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 var(--body)}
+main{max-width:640px;margin:0 auto;padding:14px 14px 40px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+h1{font:700 30px/1.1 var(--display);margin:0;letter-spacing:.01em}
+a{color:var(--accent)}
+.upd{font-size:13px;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;margin-top:12px}
+.stale{border-color:var(--warn);color:var(--warn);font-weight:700}
+.status .prog{font:700 24px/1.15 var(--display)}
+.status .sub{color:var(--muted);font-size:14px;margin-top:2px}
+.pill{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;margin-bottom:6px}
+.pill.run{background:var(--ok);color:#fff}.pill.idle{background:var(--line);color:var(--fg)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 8px;text-align:center}
+.tile .v{font:700 34px/1 var(--display);font-variant-numeric:tabular-nums}
+.tile .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+.tile.core .v{color:var(--core)}.tile.ch .v{color:var(--ch)}
+h2{font:700 18px/1.2 var(--display);margin:0 0 8px;letter-spacing:.02em}
+svg{width:100%;height:auto;display:block}
+.legend{display:flex;gap:14px;font-size:13px;color:var(--muted);margin-top:4px}
+.legend span::before{content:"";display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle;background:currentColor}
+.legend .c{color:var(--core)}.legend .h{color:var(--ch)}
+ul{list-style:none;margin:0;padding:0}
+li{padding:7px 0;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;font-size:15px}
+li:first-child{border-top:0}
+li .t{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.alarm{color:var(--warn);font-weight:700}
+form{display:flex;flex-direction:column;gap:10px}
+label{display:flex;flex-direction:column;gap:4px;font-size:14px}
+input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:inherit}
+button{font:inherit;font-weight:600;padding:9px 14px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff}
+.muted{color:var(--muted);font-size:14px}
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Smoker</h1><span class="upd" id="upd"></span></header>
+  <div id="app"><div class="card muted">Loading…</div></div>
+  <p class="muted" style="margin-top:18px"><a href="./">Open the planner</a> · <a href="#" id="setup">Settings</a></p>
+</main>
+<script>
+const CFG_KEY="deli.config";
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function getCfg(){try{return JSON.parse(localStorage.getItem(CFG_KEY)||"{}")}catch(e){return {}}}
+function setCfg(c){try{localStorage.setItem(CFG_KEY,JSON.stringify(c))}catch(e){}}
+const hm=iso=>iso?String(iso).slice(11,16):"";
+const dm=iso=>iso?String(iso).slice(8,10)+"/"+String(iso).slice(5,7):"";
+function dur(mins){mins=Math.max(0,Math.round(mins));return mins>=60?`${Math.floor(mins/60)}h ${String(mins%60).padStart(2,"0")}m`:`${mins} min`}
+const local=iso=>new Date(String(iso).replace(" ","T"));
+const isClean=n=>/CLEAN|RINS|TEST/i.test(n||"");
+
+function showSetup(msg){
+  const c=getCfg();
+  $("app").innerHTML=`<div class="card"><h2>Connect this phone</h2>${msg?`<p class="alarm">${esc(msg)}</p>`:""}
+  <form id="f"><label>API address (ends in /exec)<input name="url" value="${esc(c.url||"")}" required></label>
+  <label>Device key<input name="key" value="${esc(c.key||"")}" required></label>
+  <button>Save and connect</button></form><p class="muted">Same two details as the planner's Settings. This page only reads data.</p></div>`;
+  $("f").onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);setCfg({...getCfg(),url:fd.get("url").trim(),key:fd.get("key").trim()});load()};
+}
+
+function chart(series){
+  const pts=(series||[]).filter(p=>p&&p.t);
+  if(pts.length<2)return `<p class="muted">No readings in the last 6 hours.</p>`;
+  const W=600,H=220,L=34,R=8,T=8,B=24;
+  const t0=local(pts[0].t).getTime(),t1=local(pts[pts.length-1].t).getTime()||t0+1;
+  const vals=pts.flatMap(p=>[p.core,p.ch]).filter(v=>v!=null);
+  const ymax=Math.max(100,Math.ceil(Math.max(...vals)/10)*10),ymin=Math.min(0,Math.floor(Math.min(...vals)/10)*10);
+  const x=t=>L+(W-L-R)*((local(t).getTime()-t0)/Math.max(1,t1-t0)),y=v=>T+(H-T-B)*(1-(v-ymin)/(ymax-ymin));
+  const line=(k,col)=>{let d="",pen=false;pts.forEach(p=>{if(p[k]==null){pen=false;return}d+=(pen?"L":"M")+x(p.t).toFixed(1)+" "+y(p[k]).toFixed(1)+" ";pen=true});return `<path d="${d}" fill="none" stroke="${col}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`};
+  let grid="";for(let v=ymin;v<=ymax;v+=20)grid+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="var(--muted)">${v}°</text>`;
+  let ticks="";const step=3600000;for(let t=Math.ceil(t0/step)*step;t<=t1;t+=step){const xx=L+(W-L-R)*((t-t0)/Math.max(1,t1-t0));ticks+=`<text x="${xx}" y="${H-6}" text-anchor="middle" font-size="11" fill="var(--muted)">${String(new Date(t).getHours()).padStart(2,"0")}:00</text>`}
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Chamber and core temperature, last 6 hours">${grid}${ticks}${line("ch","var(--ch)")}${line("core","var(--core)")}</svg>
+    <div class="legend"><span class="c">Core °C</span><span class="h">Chamber °C</span></div>`;
+}
+
+function render(live){
+  const age=live.received?(Date.now()-new Date(live.received).getTime())/60000:Infinity;
+  $("upd").textContent=live.received?`updated ${age<1.5?"just now":dur(age)+" ago"}`:"";
+  const cyc=live.cycles||[],run=cyc.find(c=>!c.end),last=cyc.find(c=>c.end&&!isClean(c.program))||cyc.find(c=>c.end);
+  const L=live.latest||{};
+  const stale=age>15?`<div class="card stale">⚠ No data from Eli's PC for ${dur(age)}. The PC may be off or asleep, or FOOD.LOG closed. Temperatures are not being recorded.</div>`:"";
+  const status=run?`<div class="card status"><span class="pill run">Running</span><div class="prog">${esc(run.program)}</div>
+      <div class="sub">${live.step?esc(live.step.name)+" · ":""}started ${hm(run.start)} · running ${dur((Date.now()-local(run.start))/60000)}</div>
+      <div class="sub">Core max so far ${run.coreMax??"—"}°C</div></div>`
+    :`<div class="card status"><span class="pill idle">Idle</span><div class="prog">${last?esc(last.program)+" finished":"No recent cycles"}</div>
+      ${last?`<div class="sub">${dm(last.end)} ${hm(last.end)} · core max ${last.coreMax??"—"}°C</div>`:""}</div>`;
+  const tiles=`<div class="tiles"><div class="tile core"><div class="v">${L.core??"—"}</div><div class="l">Core °C</div></div>
+    <div class="tile ch"><div class="v">${L.ch??"—"}</div><div class="l">Chamber °C</div></div>
+    <div class="tile"><div class="v">${L.hum??"—"}</div><div class="l">Humidity %</div></div></div>
+    ${L.t?`<p class="muted" style="margin:6px 2px 0">Reading at ${hm(L.t)}</p>`:""}`;
+  const alarms=(live.alarms||[]).length?`<div class="card"><h2>Alarms · last 48 hours</h2><ul>${live.alarms.map(a=>`<li><span class="alarm">${esc(a.info)}${a.error?" ("+esc(a.error)+")":""}</span><span class="t">${dm(a.start)} ${hm(a.start)}</span></li>`).join("")}</ul></div>`:"";
+  const recent=`<div class="card"><h2>Recent cycles</h2><ul>${cyc.map(c=>`<li><span>${esc(c.program)}</span><span class="t">${dm(c.start)} ${hm(c.start)}–${c.end?hm(c.end):"now"} · ${c.coreMax??"—"}°</span></li>`).join("")||`<li class="muted">None</li>`}</ul></div>`;
+  $("app").innerHTML=stale+status+tiles+`<div class="card"><h2>Last 6 hours</h2>${chart(live.series)}</div>`+alarms+recent;
+}
+
+let timer=null;
+async function load(){
+  clearTimeout(timer);
+  const c=getCfg();if(!c.url||!c.key){showSetup();return}
+  try{
+    const r=await fetch(c.url+(c.url.includes("?")?"&":"?")+new URLSearchParams({action:"live",key:c.key}));
+    const j=await r.json();
+    if(!j.ok){showSetup(j.code==="bad_key"?"Device key not accepted.":"The planner refused the request ("+j.code+").");return}
+    if(!j.live){$("app").innerHTML=`<div class="card muted">No smoker data yet. The live feed on Eli's PC hasn't sent anything.</div>`}
+    else render(j.live);
+  }catch(e){$("upd").textContent="can't reach the planner, retrying…"}
+  timer=setTimeout(load,60000);
+}
+$("setup").onclick=e=>{e.preventDefault();showSetup()};
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+load();
+</script>
+</body>
+</html>

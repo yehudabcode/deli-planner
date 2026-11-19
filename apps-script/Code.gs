@@ -171,6 +171,63 @@ function cooksHtml_(week, recs) {
     rows + '</table>';
 }
 
+/* ---------- Smoker live view + alerts (sent every 5 min by tools/FOODLOG-live.ps1) ---------- */
+// Script property ALERT_TO: comma-separated emails for smoker alerts (default shimshi@mhmeats.co.uk).
+function liveSheet_() { return sheet_('Live', ['Live JSON', 'Received']); }
+function alertTo_() { return String(props_().getProperty('ALERT_TO') || 'shimshi@mhmeats.co.uk'); }
+function hm_(iso) { return iso ? String(iso).replace('T', ' ').slice(0, 16) : ''; }
+function saveLive_(live) {
+  const sh = liveSheet_();
+  const now = new Date();
+  sh.getRange(2, 1, 1, 2).setValues([[JSON.stringify(live), now]]);
+  const p = props_();
+  const prev = JSON.parse(p.getProperty('LIVE_STATE') || 'null');
+  const cycles = live.cycles || [], alarms = live.alarms || [];
+  const run = cycles.filter(function (c) { return !c.end; })[0] || null;
+  const state = { running: run ? String(run.id) : null, alarms: alarms.map(function (a) { return String(a.id); }), stale: false };
+  const mails = [];
+  if (prev) {
+    if (prev.running && prev.running !== state.running) {
+      const done = cycles.filter(function (c) { return String(c.id) === prev.running; })[0];
+      if (done && !isCleaning_(done.program)) mails.push(['Smoker: ' + done.program + ' finished',
+        '<p><b>' + esc_(done.program) + '</b> finished at ' + esc_(hm_(done.end)) + ' (started ' + esc_(hm_(done.start)) + ').</p>' +
+        '<p>Core max ' + (done.coreMax == null ? '—' : done.coreMax + '°C') + ' · chamber max ' + (done.chMax == null ? '—' : done.chMax + '°C') + '</p>']);
+    }
+    alarms.forEach(function (a) {
+      if ((prev.alarms || []).indexOf(String(a.id)) < 0) mails.push(['Smoker ALARM: ' + a.info + (a.error ? ' (error ' + a.error + ')' : ''),
+        '<p>The smoker raised <b>' + esc_(a.info) + '</b>' + (a.error ? ' (error ' + esc_(a.error) + ')' : '') + ' at ' + esc_(hm_(a.start)) + '.</p><p>Someone needs to check it.</p>']);
+    });
+    if (prev.stale) mails.push(['Smoker data is back', '<p>Readings from Eli\'s PC are coming through again.</p>']);
+  }
+  p.setProperty('LIVE_STATE', JSON.stringify(state));
+  const to = alertTo_();
+  mails.forEach(function (m) { try { MailApp.sendEmail({ to: to, subject: m[0], htmlBody: m[1] + '<p style="color:#666">Deli Planner smoker alert · live view: https://yehudabcode.github.io/deli-planner/smoker.html</p>' }); } catch (e) {} });
+  return { alerts: mails.length };
+}
+function readLive_() {
+  const sh = liveSheet_();
+  if (sh.getLastRow() < 2) return null;
+  const v = sh.getRange(2, 1, 1, 2).getValues()[0];
+  try { const live = JSON.parse(v[0]); live.received = v[1] ? new Date(v[1]).toISOString() : null; return live; } catch (e) { return null; }
+}
+/** Time trigger (every 15 min): emails once if no readings have arrived from Eli's PC for 30 minutes. */
+function checkLive() {
+  const live = readLive_();
+  const p = props_();
+  const state = JSON.parse(p.getProperty('LIVE_STATE') || '{}');
+  const age = live && live.received ? (Date.now() - new Date(live.received).getTime()) / 60000 : 9999;
+  if (age > 30 && !state.stale) {
+    state.stale = true; p.setProperty('LIVE_STATE', JSON.stringify(state));
+    try { MailApp.sendEmail({ to: alertTo_(), subject: 'Smoker: no data from Eli\'s PC',
+      htmlBody: '<p>No smoker readings have arrived for ' + Math.round(age) + ' minutes.</p><p>Eli\'s PC may be off or asleep, or FOOD.LOG closed. <b>Temperatures are not being recorded until it is fixed.</b></p>' }); } catch (e) {}
+  }
+}
+/** Run once from the editor to switch on the 'no data' alert. */
+function installLiveTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function (t) { if (t.getHandlerFunction() === 'checkLive') ScriptApp.deleteTrigger(t); });
+  ScriptApp.newTrigger('checkLive').timeBased().everyMinutes(15).create();
+}
+
 /* ---------- Weekly HACCP report ---------- */
 function esc_(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
@@ -290,6 +347,7 @@ function doGet(e) {
     const staff = String(props_().getProperty('STAFF') || '').split(',').map(function (x) { return x.trim(); }).filter(String);
     return json_({ ok: true, recipes: readRecipes_(), staff: staff });
   }
+  if (p.action === 'live') return json_({ ok: true, live: readLive_(), now: new Date().toISOString() });
   if (p.action === 'cooks') {
     if (!validWeek_(p.week)) return json_({ ok: false, code: 'bad_week' });
     return json_({ ok: true, cooks: readCooks_(p.week) });
@@ -311,6 +369,11 @@ function doPost(e) {
     if (!r || !r.key || !validWeek_(r.week)) return json_({ ok: false, code: 'bad_body' });
     const lock = LockService.getScriptLock(); lock.waitLock(20000);
     try { saveRecord_(r); return json_({ ok: true }); } finally { lock.releaseLock(); }
+  }
+  if (body.action === 'live') {
+    if (!body.live) return json_({ ok: false, code: 'bad_body' });
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    try { return json_({ ok: true, result: saveLive_(body.live) }); } finally { lock.releaseLock(); }
   }
   if (body.action === 'cooks') {
     if (!Array.isArray(body.cooks)) return json_({ ok: false, code: 'bad_body' });
