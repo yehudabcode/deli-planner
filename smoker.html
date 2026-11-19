@@ -65,8 +65,8 @@ const isClean=n=>/CLEAN|RINS|TEST/i.test(n||"");
 function showSetup(msg){
   const c=getCfg();
   $("app").innerHTML=`<div class="card"><h2>Connect this phone</h2>${msg?`<p class="alarm">${esc(msg)}</p>`:""}
-  <form id="f"><label>API address (ends in /exec)<input name="url" value="${esc(c.url||"")}" required></label>
-  <label>Device key<input name="key" value="${esc(c.key||"")}" required></label>
+  <form id="f"><label>API address (ends in /exec)<input name="url" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" value="${esc(c.url||"")}" required></label>
+  <label>Device key<input name="key" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" value="${esc(c.key||"")}" required></label>
   <button>Save and connect</button></form><p class="muted">Same two details as the planner's Settings. This page only reads data.</p></div>`;
   $("f").onsubmit=e=>{e.preventDefault();const fd=new FormData(e.target);setCfg({...getCfg(),url:fd.get("url").trim(),key:fd.get("key").trim()});load()};
 }
