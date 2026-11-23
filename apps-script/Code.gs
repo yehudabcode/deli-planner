@@ -394,6 +394,37 @@ function doPost(e) {
     try { return json_({ ok: true, result: makeReport_(body.week, body.mode || 'email') }); }
     catch (err) { return json_({ ok: false, code: 'report_failed', message: String(err && err.message || err) }); }
   }
+  // Devices without the edit PIN (e.g. production tablets) may only enter the ACTUAL kg of a line already in the plan.
+  if (body.action === 'actual') {
+    if (!validWeek_(body.week) || !/^(mon|tue|wed|thu|fri)$/.test(body.day) || !body.id) return json_({ ok: false, code: 'bad_body' });
+    const aq = body.aq === null || body.aq === '' || body.aq === undefined ? null : Number(body.aq);
+    if (aq !== null && !(isFinite(aq) && aq >= 0 && aq < 100000)) return json_({ ok: false, code: 'bad_body' });
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    try {
+      const plans = {};
+      const get = function (w) { if (!plans[w]) plans[w] = readWeek_(w); return plans[w]; };
+      const plan = get(body.week);
+      const line = plan.days && plan.days[body.day] && plan.days[body.day].lines && plan.days[body.day].lines[body.id];
+      if (!line) return json_({ ok: false, code: 'no_line' });
+      if (line.src) return json_({ ok: false, code: 'linked_line' });
+      const setA = function (l) { if (l.pq === undefined) l.pq = l.qty == null ? null : l.qty; l.aq = aq; l.qty = aq !== null ? aq : l.pq; };
+      setA(line);
+      const links = line.links || (line.cki ? [{ id: line.cki, wk: line.ckw, dk: line.ckd }] : []);
+      links.forEach(function (k) {
+        const lp = get(k.wk), ll = lp.days && lp.days[k.dk] && lp.days[k.dk].lines && lp.days[k.dk].lines[k.id];
+        if (ll) setA(ll);
+      });
+      const now = new Date(), sh = plansSheet_();
+      Object.keys(plans).forEach(function (w) {
+        let row = findWeekRow_(sh, w);
+        if (!row) { sh.appendRow([w, '', '', 0]); row = sh.getLastRow(); sh.getRange(row, 1).setNumberFormat('@').setValue(w); }
+        plans[w].weekOf = w;
+        sh.getRange(row, 2, 1, 3).setValues([[JSON.stringify(plans[w]), now, Number(sh.getRange(row, 4).getValue() || 0) + 1]]);
+      });
+      logSheet_().appendRow([now, body.week, body.day, body.id, line.p || '', line.qty == null ? '' : line.qty, line.unit || '', line.st || '', line.v || '', 'Actual kg entered (no PIN): ' + (aq === null ? 'cleared' : aq), '']);
+      return json_({ ok: true });
+    } finally { lock.releaseLock(); }
+  }
   if (body.action === 'patch') {
     if (!checkPin_(body.pin)) return json_({ ok: false, code: 'bad_pin' });
     if (!validWeek_(body.week) || !Array.isArray(body.changes)) return json_({ ok: false, code: 'bad_body' });

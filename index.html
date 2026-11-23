@@ -471,7 +471,7 @@ function rowHtml(p,l,isFirst,dayKey){
   return `<div class="row${has?" has":""}${isFirst?"":" sub"}" data-line="${id}" data-p="${p.id}">
     <div class="pn">${esc(p.name)}<small${p.norecipe?' class="nr"':""}>${esc(p.sub)}</small></div>
     <div class="c-var">${vSel}</div>
-    <div class="c-qty"><div class="pa"><label>Planned<input class="qty" id="q-${id}" data-f="pq" inputmode="decimal" placeholder="—" value="${pqOf(l)!=null?esc(pqOf(l)):""}" aria-label="${esc(p.name)} planned kg"${dis}></label><label>Actual<input class="qty act" id="a-${id}" data-f="aq" inputmode="decimal" placeholder="—" value="${l&&l.aq!=null?esc(l.aq):""}" aria-label="${esc(p.name)} actual kg"${dis}></label></div><span class="bt" id="b-${id}">${esc(bt)}</span></div>
+    <div class="c-qty"><div class="pa"><label>Planned<input class="qty" id="q-${id}" data-f="pq" inputmode="decimal" placeholder="—" value="${pqOf(l)!=null?esc(pqOf(l)):""}" aria-label="${esc(p.name)} planned kg"${dis}></label><label>Actual<input class="qty act" id="a-${id}" data-f="aq" inputmode="decimal" placeholder="—" value="${l&&l.aq!=null?esc(l.aq):""}" aria-label="${esc(p.name)} actual kg"${readOnly?(l&&!l.src?"":" disabled"):dis}></label></div><span class="bt" id="b-${id}">${esc(bt)}</span></div>
     <div class="c-unit"><select id="u-${id}" data-f="unit" aria-label="Unit"${dis}>${UNITS.map(u=>`<option${u===unit?" selected":""}>${u}</option>`).join("")}</select></div>
     <div class="c-note">${p.chilli?`<label class="chl" for="c-${id}">Of which chilli (kg)<input id="c-${id}" data-f="ch" inputmode="decimal" placeholder="0" value="${l&&l.ch!=null?esc(l.ch):""}"${dis}></label>`:""}<input id="n-${id}" data-f="note" placeholder="Note" value="${esc(l?.note||"")}" aria-label="${esc(p.name)} note"${dis}></div>
     <div class="acts">${acts}</div>
@@ -512,6 +512,7 @@ function dayLines(k){plan.days=plan.days||{};plan.days[k]=plan.days[k]||{lines:{
 function onField(e){
   const el=e.target;const f=el.dataset.f;if(!f)return;
   const row=el.closest(".row");const k=DAYS[selDay][0];const lines=dayLines(k);
+  if(readOnly){if(f==="aq")setActualOnly(row,k,el);return}
   if(f==="ckd"){setCookDay(row.dataset.line,el.value);return}
   let id=row.dataset.line;const p=PMAP[row.dataset.p];
   if(id.startsWith("new-")){
@@ -539,11 +540,38 @@ function onField(e){
 }
 // Products with autoNext (rauchfleisch): the next stage is set automatically to the earliest day (2 weeks after brining), no dropdown
 function autoLink(id){
+  if(readOnly)return false;
   const line=dayLines(DAYS[selDay][0])[id];if(!line)return false;const p=PMAP[line.p];
   if(!p||!p.autoNext||!isBrineStage(p,line))return false;
   if(+line.qty>0&&(!line.ck||linksOf(p,line).length!==stagesOf(p).length-1)){setCookDay(id,iso(autoDates(p,addDays(monday,selDay))[0]));return true}
   if(!(+line.qty>0)&&line.ck){setCookDay(id,"");return true}
   return false;
+}
+/* View-only devices (no edit PIN, e.g. production tablets): Planned is locked, Actual kg can be entered.
+   Saved through the "actual" action, which only changes the actual kg of an existing line (and its linked stages). */
+const pendingA=new Map();let timerA=null;
+function setActualOnly(row,k,el){
+  const id=row.dataset.line,line=dayLines(k)[id];if(!line||line.src)return;
+  const v=el.value.replace(",",".").trim();if(v!==""&&isNaN(+v))return;
+  if(line.pq===undefined)line.pq=line.qty??null;
+  line.aq=v===""?null:+v;setQ(line);
+  const p=PMAP[line.p];
+  if(p)linksOf(p,line).forEach(x=>{if(x.wk!==weekId)return;const ll=dayLines(x.dk)[x.id];if(ll){ll.pq=line.pq;ll.aq=line.aq;ll.qty=line.qty}});
+  const btEl=row.querySelector(".bt");if(btEl)btEl.textContent=+line.qty>0?batchText(line):"";
+  lastTyping=Date.now();pendingA.set(weekId+"|"+k+"|"+id,line.aq);setStatus("Saving…");
+  clearTimeout(timerA);timerA=setTimeout(flushA,700);renderBoard();
+}
+async function flushA(){
+  clearTimeout(timerA);if(!pendingA.size)return;
+  const batch=new Map(pendingA);pendingA.clear();
+  try{
+    for(const [key,aq] of batch){const [week,day,id]=key.split("|");await api("actual",null,{week,day,id,aq})}
+    setStatus("Saved · "+new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}));
+  }catch(e){
+    if(e&&e.code==="bad_key")showBanner("Device key not accepted. Open Settings to fix it.");
+    else if(e&&(e.code==="no_line"||e.code==="linked_line"))setStatus("That line has changed. Refresh the page.",true);
+    else{for(const [k,v] of batch)if(!pendingA.has(k))pendingA.set(k,v);setStatus("Couldn't save, retrying… check the internet connection.",true);timerA=setTimeout(flushA,4000)}
+  }
 }
 function removeLine(id){
   const k=DAYS[selDay][0];const lines=dayLines(k);
@@ -618,7 +646,7 @@ async function fetchWeek(quiet){
   try{
     const j=await api("week",{week:myWeek});
     if(myWeek!==weekId)return;
-    if(pending.size||writing||Date.now()-lastTyping<3000)return; // don't overwrite while someone is typing
+    if(pending.size||pendingA.size||writing||Date.now()-lastTyping<3000)return; // don't overwrite while someone is typing
     plan=j.plan&&j.plan.days?j.plan:{days:{}};
     try{const n=await api("week",{week:iso(addDays(monday,7))});if(myWeek===weekId)nextMon=(n.plan&&n.plan.days&&n.plan.days.mon)||{lines:{}}}catch(e){}
     applyPending();render();refreshRecords();
@@ -650,7 +678,7 @@ async function connect(){
   try{
     const j=await api("ping",{pin:cfg.pin||""});
     readOnly=!j.canEdit;
-    if(readOnly)showBanner(cfg.pin?"Edit PIN not accepted. View only on this device.":"View only. Only Yehuda and Eli can change the plan.");
+    if(readOnly)showBanner(cfg.pin?"Edit PIN not accepted. View only on this device.":"Planned kg is locked on this device: enter the Actual kg only. Only Yehuda, Eli or an admin can change the plan.");
   }catch(e){
     if(e&&e.code==="bad_key")showBanner("Device key not accepted. Open Settings to fix it.");
     else showBanner("Can't reach the shared plan. Check the internet connection, or the API address in Settings.");
