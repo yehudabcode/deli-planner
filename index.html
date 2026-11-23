@@ -224,8 +224,7 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 
   <nav class="stages" aria-label="Planning stages">
     <button type="button" class="stage" id="goPlan">1 · Plan</button>
-    <button type="button" class="stage" id="goWeigh">2 · Weigh-outs</button>
-    <button type="button" class="stage" id="goTicks">3 · Tick lists</button>
+    <button type="button" class="stage" id="goTicks">2 · Tick lists</button>
   </nav>
 
   <div id="banner" class="banner" hidden></div>
@@ -238,7 +237,6 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
       <div class="tools">
         <input type="search" id="search" placeholder="Find a product" aria-label="Find a product">
         <label><input type="checkbox" id="plannedOnly"> Planned only</label>
-        <button type="button" class="wbtn" id="openWeigh">Weigh-out sheet</button>
         <button type="button" class="wbtn" id="openTicks">Tick lists</button>
         <button type="button" class="wbtn" id="openOrder">Butcher order</button>
       </div>
@@ -774,7 +772,6 @@ function renderWeigh(){
     ${brineCards(byCat)}
     ${byCat.length?byCat.map(l=>weighCard(PMAP[l.p],l)).join(""):`<p>Nothing planned for ${name}.</p>`}`;
 }
-$("openWeigh").onclick=()=>{$("weigh").hidden=false;renderWeigh();$("weigh").scrollIntoView({block:"start"});if(!localMode&&!recipes)loadRecipes()};
 $("weigh").addEventListener("change",e=>{const t=e.target,f=t.dataset.f;if(!f)return;
   if(f==="top"||f==="size"){const st=brineState[t.dataset.brine];st[f]=Math.max(0,+t.value||0)}
   else if(f==="curePct"){const v=+t.value;if(v>0){cureStrength=v;ls("deli.curePct",String(v))}}
@@ -808,12 +805,11 @@ function renderOrder(){
   const fri=addDays(monday,4);
   const status=localMode?"Not connected, so recipes can't load: minced products can't be broken down into meat. Connect in Settings."
     :recipes===null?(recipesErr?recipeErrText():"Loading recipes…"):"";
-  let days="",tot={},anyMiss=[];
+  let tot={},anyMiss=[];
   for(let i=0;i<DAYS.length;i++){
     const [k,name]=DAYS[i],d=addDays(monday,i),{items,miss}=orderItems(k);
     anyMiss.push(...miss.map(m=>name+": "+m));
     items.forEach(it=>{const key=it.name+"|"+it.unit;const t=tot[key]||(tot[key]={name:it.name,unit:it.unit,kg:0,for:new Set()});t.kg+=it.kg;it.for.forEach(f=>t.for.add(f))});
-    if(items.length)days+=`<h3>For ${name} ${d.getDate()} ${MONTHS[d.getMonth()]} production</h3>${orderTable(items)}`;
   }
   const totList=Object.values(tot).sort((a,b)=>a.name.localeCompare(b.name));
   const now=new Date();
@@ -821,7 +817,7 @@ function renderOrder(){
     <p>D'Eli deli · from the <b>planned</b> kg for Mon ${monday.getDate()} – Fri ${fri.getDate()} ${MONTHS[fri.getMonth()]}. Whole muscle at green weight; minced products broken down into their meat from the recipes. Printed ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}.</p>
     ${status?`<p class="none noprint">${esc(status)}</p>`:""}</div>
     <div class="noprint"><button type="button" class="wbtn" id="printOrder">Print / Save as PDF</button> <button type="button" class="wbtn" id="closeOrder">Close</button></div></div>
-    ${totList.length?`<h3>Week total</h3>${orderTable(totList)}${days}`:`<p>Nothing planned for this week yet. Fill in the <b>Planned</b> column first.</p>`}
+    ${totList.length?orderTable(totList):`<p>Nothing planned for this week yet. Fill in the <b>Planned</b> column first.</p>`}
     ${anyMiss.length?`<p class="none">Not broken down (recipe not loaded): ${esc(anyMiss.join("; "))}</p>`:""}
     <p style="margin-top:18px">Ordered by: ______________________ &nbsp; Date: ____________ &nbsp; Butcher confirmed: ______________________</p>`;
 }
@@ -1116,11 +1112,10 @@ $("ticks").addEventListener("click",async e=>{
 $("openTicks").onclick=async()=>{$("ticks").hidden=false;if(!localMode&&!recipes)await loadRecipes();await loadRecords();renderTicks();$("ticks").scrollIntoView({block:"start"})};
 
 /* Top stage buttons */
-function markStage(){$("goWeigh").classList.toggle("on",!$("weigh").hidden);$("goTicks").classList.toggle("on",!$("ticks").hidden);
+function markStage(){$("goTicks").classList.toggle("on",!$("ticks").hidden);
   $("goPlan").classList.toggle("on",$("weigh").hidden&&$("ticks").hidden);
   $("panel").hidden=!$("weigh").hidden||!$("ticks").hidden}
 $("goPlan").onclick=()=>{$("weigh").hidden=true;$("ticks").hidden=true;markStage();$("panel").scrollIntoView({block:"start"})};
-$("goWeigh").onclick=()=>{$("ticks").hidden=true;$("openWeigh").click();markStage()};
 $("goTicks").onclick=async()=>{$("weigh").hidden=true;await $("openTicks").onclick();markStage()};
 new MutationObserver(markStage).observe($("weigh"),{attributes:true,attributeFilter:["hidden"]});
 new MutationObserver(markStage).observe($("ticks"),{attributes:true,attributeFilter:["hidden"]});
