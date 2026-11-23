@@ -135,6 +135,7 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
   .row.sub .pn{visibility:visible;font-size:0;border-left-color:var(--c)}
 }
 .wbtn{border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer}
+#order,#order .otab th,#order .otab td,#order .otab td.n,#order .otab th.n{text-align:center}#order .wh{flex-direction:column;align-items:center}
 .otab{width:100%;border-collapse:collapse;margin:6px 0 14px;table-layout:fixed}.otab th:nth-child(1){width:36%}.otab th:nth-child(2){width:14%}.otab th:nth-child(3){width:30%}.otab th,.otab td{border:1px solid var(--line);padding:6px 8px;text-align:left}.otab td.n,.otab th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.otab small{color:var(--muted)}
 .weigh{margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:16px}
 .weigh[hidden]{display:none}
@@ -822,7 +823,8 @@ function renderOrder(){
     <p style="margin-top:18px">Ordered by: ______________________ &nbsp; Date: ____________ &nbsp; Butcher confirmed: ______________________</p>`;
 }
 $("openOrder").onclick=()=>{$("order").hidden=false;renderOrder();$("order").scrollIntoView({block:"start"});if(!localMode&&!recipes)loadRecipes().then(renderOrder)};
-$("order").addEventListener("click",e=>{if(e.target.id==="printOrder"){document.body.dataset.print="order";window.print()}else if(e.target.id==="closeOrder")$("order").hidden=true});
+$("order").addEventListener("click",e=>{if(e.target.id==="printOrder"){document.body.dataset.print="order";
+  const pm=document.createElement("style");pm.textContent="@page{margin:4mm}";document.head.appendChild(pm);window.print();setTimeout(()=>pm.remove(),1000)}else if(e.target.id==="closeOrder")$("order").hidden=true});
 
 /* ---------- Tick lists (HACCP). One per batch; records saved to the sheet's Records tab ---------- */
 let records={}, recWeek=null; const recTimers={};
