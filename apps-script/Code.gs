@@ -409,7 +409,7 @@ function doPost(e) {
       if (line.src) return json_({ ok: false, code: 'linked_line' });
       const setA = function (l) { if (l.pq === undefined) l.pq = l.qty == null ? null : l.qty; l.aq = aq; l.qty = aq !== null ? aq : l.pq; };
       setA(line);
-      const links = line.links || (line.cki ? [{ id: line.cki, wk: line.ckw, dk: line.ckd }] : []);
+      const links = (line.links || (line.cki ? [{ id: line.cki, wk: line.ckw, dk: line.ckd }] : [])).concat(line.cookedLink ? [line.cookedLink] : []);
       links.forEach(function (k) {
         const lp = get(k.wk), ll = lp.days && lp.days[k.dk] && lp.days[k.dk].lines && lp.days[k.dk].lines[k.id];
         if (ll) setA(ll);
@@ -422,6 +422,42 @@ function doPost(e) {
         sh.getRange(row, 2, 1, 3).setValues([[JSON.stringify(plans[w]), now, Number(sh.getRange(row, 4).getValue() || 0) + 1]]);
       });
       logSheet_().appendRow([now, body.week, body.day, body.id, line.p || '', line.qty == null ? '' : line.qty, line.unit || '', line.st || '', line.v || '', 'Actual kg entered (no PIN): ' + (aq === null ? 'cleared' : aq), '']);
+      return json_({ ok: true });
+    } finally { lock.releaseLock(); }
+  }
+  // "Into the oven" ticked on every batch of a raw line: add (or remove) the Cooked line on the next working day.
+  // Device key only, so production tablets can do it. The cooked line copies the raw line; it can't be used to edit the plan.
+  if (body.action === 'cooked') {
+    const days = /^(mon|tue|wed|thu|fri)$/;
+    if (!validWeek_(body.week) || !days.test(body.day) || !body.id) return json_({ ok: false, code: 'bad_body' });
+    const lock = LockService.getScriptLock(); lock.waitLock(20000);
+    try {
+      const plans = {};
+      const get = function (w) { if (!plans[w]) { plans[w] = readWeek_(w); plans[w].days = plans[w].days || {}; } return plans[w]; };
+      const dl = function (pl, d) { pl.days[d] = pl.days[d] || { lines: {} }; pl.days[d].lines = pl.days[d].lines || {}; return pl.days[d].lines; };
+      const src = dl(get(body.week), body.day)[body.id];
+      if (!src || src.cooked) return json_({ ok: false, code: 'no_line' });
+      const old = src.cookedLink;
+      if (old && validWeek_(old.wk) && days.test(old.dk)) delete dl(get(old.wk), old.dk)[old.id];
+      delete src.cookedLink;
+      if (body.on) {
+        if (!validWeek_(body.cw) || !days.test(body.cd)) return json_({ ok: false, code: 'bad_body' });
+        const cid = 'ck_' + body.id, label = String(body.label || '').slice(0, 80);
+        dl(get(body.cw), body.cd)[cid] = { p: src.p, qty: src.qty, pq: src.pq === undefined ? src.qty : src.pq, aq: src.aq == null ? null : src.aq,
+          unit: src.unit || 'kg', v: src.v || null, st: 'Cooked', cooked: 1, src: 1,
+          codes: Array.isArray(body.codes) ? body.codes.slice(0, 20).map(String) : [], from: body.from || { wk: body.week, dk: body.day, id: body.id },
+          note: label, o: (src.o || 0) + 1000 };
+        src.cookedLink = { id: cid, wk: body.cw, dk: body.cd, label: label };
+      }
+      const now = new Date(), sh = plansSheet_();
+      Object.keys(plans).forEach(function (w) {
+        let row = findWeekRow_(sh, w);
+        if (!row) { sh.appendRow([w, '', '', 0]); row = sh.getLastRow(); sh.getRange(row, 1).setNumberFormat('@').setValue(w); }
+        plans[w].weekOf = w;
+        sh.getRange(row, 2, 1, 3).setValues([[JSON.stringify(plans[w]), now, Number(sh.getRange(row, 4).getValue() || 0) + 1]]);
+      });
+      logSheet_().appendRow([now, body.week, body.day, body.id, src.p || '', src.qty == null ? '' : src.qty, src.unit || '', src.st || '', src.v || '',
+        body.on ? 'Into the oven: cooked line added ' + body.cw + ' ' + body.cd : 'Into the oven unticked: cooked line removed', '']);
       return json_({ ok: true });
     } finally { lock.releaseLock(); }
   }

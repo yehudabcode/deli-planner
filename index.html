@@ -68,6 +68,11 @@ button.stage:hover{border-color:var(--fg);color:var(--fg)}
 .day .items{list-style:none;margin:0;padding:8px 12px 10px;display:flex;flex-direction:column;gap:6px;flex:1}
 .day .items li{display:flex;justify-content:space-between;gap:8px;border-left:3px solid var(--c);padding-left:8px;min-width:0}
 .day .items small.bc{font-style:italic;font-size:11px}
+.raw{color:#c62828}.cooked{background:#ffd600;color:#000;padding:0 4px;border-radius:3px}
+.ckauto.cookedtxt{color:#7a5c00}
+.tcard .ttl.raw{color:#c62828}.tcard .ttl.cooked{background:#ffd600;color:#000}
+.tmi .tt.raw{color:#c62828}.tmi .tt.cooked{background:#ffd600;color:#000;padding:0 4px;border-radius:3px}
+@media print{.tcard .ttl.raw{color:#c62828!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.tcard .ttl.cooked{background:#ffd600!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}}
 .day .items .nm{font-weight:600;min-width:0;overflow-wrap:anywhere}
 .day .items .nm small{display:block;font-weight:400;color:var(--muted);font-size:12px}
 .day .items .q{font-family:var(--display);font-weight:600;font-size:17px;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--c)}
@@ -282,7 +287,7 @@ const DEFAULT_STAGES=["Inject","Cook"];
 function stagesOf(p){return p.stages||DEFAULT_STAGES}
 function gapsOf(p){return p.gaps||[{min:1}]}
 /* old saved lines used "Brine / inject" and "Prep & cook" */
-function stageOf(p,l){const ss=stagesOf(p),st=l&&l.st;if(!st||st==="Brine / inject")return ss[0];if(st==="Prep & cook")return ss[1]||ss[0];return ss.includes(st)?st:ss[0]}
+function stageOf(p,l){if(l&&l.cooked)return "Cooked";const ss=stagesOf(p),st=l&&l.st;if(!st||st==="Brine / inject")return ss[0];if(st==="Prep & cook")return ss[1]||ss[0];return ss.includes(st)?st:ss[0]}
 function isFirstStage(p,l){return stageOf(p,l)===stagesOf(p)[0]}
 const CODES={franks:"FR",double_smoked:"DS",bratwurst:"BW",kielbasa:"KB",liverwurst:"LW",beef_salami:"BS",turkey_salami:"TS",chicken_salami:"CS",wurst:"WU",hungarian:"HU",chorizo:"CH",square_aufschnitt:"SA",pepper_aufschnitt:"PA",salt_beef:"SB",pastrami:"PS",navel_pastrami:"NP",roast_beef:"RB",leanside_chuck:"LC",rauchfleisch:"RF",chicken_breast:"CB",chicken_legs:"CL",turkey_drumsticks:"TD"};
 function splitBatches(kg){if(!(kg>0))return null;const n=Math.ceil(kg/TUMBLER_MAX-1e-9);return {n,each:kg/n}}
@@ -375,19 +380,19 @@ function renderBoard(){
   $("board").innerHTML=DAYS.map(([k,name],i)=>{
     const ls_=linesFor(k).filter(isReal);
     const byCat=CATS.flatMap(([c])=>ls_.filter(l=>PMAP[l.p]?.cat===c));
-    let kg=0;ls_.forEach(l=>{if((l.unit||"kg")==="kg"&&+l.qty>0)kg+=+l.qty});
+    let kg=0,ckg=0;ls_.forEach(l=>{if((l.unit||"kg")==="kg"&&+l.qty>0){if(l.cooked)ckg+=+l.qty;else kg+=+l.qty}});
     const items=byCat.length?byCat.map(l=>{const p=PMAP[l.p]||{name:l.p};
       const isWhole=CATTYPE[p.cat]==="whole";
-      const extra=[isWhole?stageOf(p,l):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,...linksOf(p,l).map(k=>k.st+" "+shortDate(parseIso(k.d))),l.note].filter(Boolean).join(" · ");
+      const extra=[isWhole||l.cooked?stageOf(p,l):null,l.v,+l.qty>0?batchText(l):null,+l.ch>0?"of which chilli "+fmt(+l.ch)+" kg":null,...linksOf(p,l).map(k=>k.st+" "+shortDate(parseIso(k.d))),l.note].filter(Boolean).join(" · ");
       const q=+l.qty>0?`<span class="q">${fmt(+l.qty)} ${esc(l.unit||"kg")}</span>`:`<span class="q tbc">qty TBC</span>`;
       const bc=PMAP[l.p]&&+l.qty>0&&(l.unit||"kg")==="kg"?batchCodes(p,l,k).join(", "):"";
-      return `<li><span class="nm">${PMAP[l.p]&&lineDone(k,p,l)?`<span class="ok" title="${isOvenLine(p,l)?"In the cooker: raw prep complete":"Tick list complete"}">✓</span>`:""}${esc(p.name)}${extra?`<small>${esc(extra)}</small>`:""}${bc?`<small class="bc">${esc(bc)}</small>`:""}</span>${q}</li>`}).join("")
+      return `<li><span class="nm">${PMAP[l.p]&&lineDone(k,p,l)?`<span class="ok" title="${isOvenLine(p,l)?"In the cooker: raw prep complete":"Tick list complete"}">✓</span>`:""}<span class="${l.cooked?"cooked":"raw"}">${esc(p.name)}</span>${extra?`<small>${esc(extra)}</small>`:""}${bc?`<small class="bc">${esc(bc)}</small>`:""}</span>${q}</li>`}).join("")
       :`<li class="clear" style="border:0;padding:0">Nothing planned</li>`;
     return `<button class="day d${i}${i===selDay?" sel":""}" data-day="${i}" aria-pressed="${i===selDay}">
       <div class="head"><span class="dn">${name}</span><span class="dd">${addDays(monday,i).getDate()} ${MONTHS[addDays(monday,i).getMonth()].slice(0,3)}</span></div>
       ${remindersFor(i).map(r=>`<div class="remind">${esc(r)}</div>`).join("")}
       <ul class="items">${items}</ul>
-      <div class="foot"><span><b>${ls_.length}</b> line${ls_.length===1?"":"s"}</span><span><b>${fmt(kg)}</b> kg</span></div>
+      <div class="foot"><span><b>${ls_.length}</b> line${ls_.length===1?"":"s"}</span><span>${kg||!ckg?`<b class="raw">${fmt(kg)}</b> kg raw`:""}${ckg?`${kg?" · ":""}<b class="cooked">${fmt(ckg)}</b> kg cooked`:""}</span></div>
     </button>`}).join("");
 }
 
@@ -439,7 +444,8 @@ function buildNext(src,st,codes){const p=PMAP[src.p];
   return {p:src.p,qty:src.qty,pq:pqOf(src),aq:src.aq??null,unit:src.unit||"kg",v:src.v||null,st,src:1,start:src.inj,codes,note:stagesOf(p)[0]+" "+shortDate(parseIso(src.inj)),o:Date.now()};
 }
 function relinkAll(src,id){const p=PMAP[src.p];const codes=batchCodes(p,{...src,id},DAYS[selDay][0]);
-  linksOf(p,src).forEach(k=>putLine(k.wk,k.dk,k.id,buildNext(src,k.st,codes)))}
+  linksOf(p,src).forEach(k=>putLine(k.wk,k.dk,k.id,buildNext(src,k.st,codes)));
+  const ck=src.cookedLink;if(ck)putLine(ck.wk,ck.dk,ck.id,cookedLine(src,codes,ck.label||"",{wk:weekId,dk:DAYS[selDay][0],id,date:iso(addDays(monday,selDay))}))}
 function putLine(wk,dk,id,val){if(wk===weekId)dayLines(dk)[id]=val;queueW(wk,dk,id,val)}
 function setCookDay(srcId,val){
   const k=DAYS[selDay][0];const lines=dayLines(k);const src=lines[srcId];if(!src)return;
@@ -461,7 +467,14 @@ function setCookDay(srcId,val){
   }
   queue(k,srcId,{...src});render();
 }
+function cookedRowHtml(p,l,isFirst){
+  return `<div class="row has${isFirst?"":" sub"}" data-line="${l.id}" data-p="${p.id}">
+    <div class="pn"><span class="cooked">${esc(p.name)}</span><small>Cooked side</small></div>
+    <div class="c-var"><span class="ckauto cookedtxt">Cooked · ${esc(l.note||"")}</span></div>
+    <div class="c-qty"><span class="q">${fmt(+l.qty||0)} ${esc(l.unit||"kg")}</span><span class="bt">${esc((l.codes||[]).join(", "))}</span></div>
+    <div class="c-unit"></div><div class="c-note"></div><div class="acts"></div></div>`}
 function rowHtml(p,l,isFirst,dayKey){
+  if(l&&l.cooked)return cookedRowHtml(p,l,isFirst);
   const id=l?l.id:"new-"+p.id;
   const dis=readOnly?" disabled":"";
   const isWhole=CATTYPE[p.cat]==="whole";
@@ -550,6 +563,34 @@ function autoLink(id){
   if(!(+line.qty>0)&&line.ck){setCookDay(id,"");return true}
   return false;
 }
+/* Cooked line: once every batch of a raw line has "Into the oven" ticked, the same product + batch codes appear
+   on the next working day as a Cooked line (yellow) for the cooked side. Unticking removes it. Saved by the "cooked"
+   backend action (device key only, so the tablets can do it). */
+function dayDate(dk){return addDays(monday,DAYS.findIndex(d=>d[0]===dk))}
+function cookedTarget(dk){const t=nextWorkday(addDays(dayDate(dk),1));return {wk:iso(addDays(t,1-t.getDay())),dk:DAYKEYS[t.getDay()]}}
+function cookedLine(src,codes,label,from){return {p:src.p,qty:src.qty,pq:pqOf(src),aq:src.aq??null,unit:src.unit||"kg",v:src.v||null,st:"Cooked",cooked:1,src:1,codes,from,note:label,o:(src.o||0)+1000}}
+async function syncCooked(key){
+  const [wk,dk,id]=key.split("|");if(wk!==weekId)return;
+  const l=dayLines(dk)[id];if(!l||l.cooked)return;const p=PMAP[l.p];if(!p||!isOvenLine(p,l))return;
+  const done=lineDone(dk,p,{...l,id});
+  try{
+    if(done&&!l.cookedLink){
+      const t=cookedTarget(dk),cid="ck_"+id,codes=batchCodes(p,{...l,id},dk),label="Into the oven "+shortDate(dayDate(dk));
+      const from={wk:weekId,dk,id,date:iso(dayDate(dk))};
+      l.cookedLink={id:cid,wk:t.wk,dk:t.dk,label};
+      if(t.wk===weekId)dayLines(t.dk)[cid]=cookedLine(l,codes,label,from);
+      renderBoard();
+      if(!localMode)await api("cooked",null,{week:weekId,day:dk,id,on:true,cw:t.wk,cd:t.dk,codes,label,from});
+      else{queue(dk,id,{...l});putLine(t.wk,t.dk,cid,cookedLine(l,codes,label,from))}
+      setStatus("Cooked line added for "+shortDate(parseIso(iso(addDays(parseIso(t.wk),DAYKEYS.indexOf(t.dk)-1)))));
+    }else if(!done&&l.cookedLink){
+      const k=l.cookedLink;if(k.wk===weekId)delete dayLines(k.dk)[k.id];delete l.cookedLink;renderBoard();
+      if(!localMode)await api("cooked",null,{week:weekId,day:dk,id,on:false});
+      else{queue(dk,id,{...l});putLine(k.wk,k.dk,k.id,null)}
+      setStatus("Cooked line removed");
+    }
+  }catch(e){setStatus("Couldn't update the cooked line ("+((e&&e.code)||"no connection")+"). Untick and tick again.",true)}
+}
 /* View-only devices (no edit PIN, e.g. production tablets): Planned is locked, Actual kg can be entered.
    Saved through the "actual" action, which only changes the actual kg of an existing line (and its linked stages). */
 const pendingA=new Map();let timerA=null;
@@ -579,6 +620,7 @@ async function flushA(){
 function removeLine(id){
   const k=DAYS[selDay][0];const lines=dayLines(k);
   const src=lines[id];if(src)linksOf(PMAP[src.p],src).forEach(k=>putLine(k.wk,k.dk,k.id,null));
+  if(src&&src.cookedLink)putLine(src.cookedLink.wk,src.cookedLink.dk,src.cookedLink.id,null);
   lines[id]=null;queue(k,id,null);render();
 }
 function addLine(pid){
@@ -697,7 +739,7 @@ let recipes=null; // null = not loaded, [] = loaded but empty
 let STAFF=[]; let recipesErr=null; // from the STAFF script property (names stay out of this public repo)
 async function loadRecipes(){
   if(localMode)return;
-  try{const j=await api("recipes",{});recipes=Array.isArray(j.recipes)?j.recipes:[];if(Array.isArray(j.staff))STAFF=j.staff}
+  try{const j=await api("recipes",{});recipes=splitCookSteps(Array.isArray(j.recipes)?j.recipes:[]);if(Array.isArray(j.staff))STAFF=j.staff}
   catch(e){recipesErr=(e&&e.code)||(e&&e.message)||"unknown";}
   if(!$("weigh").hidden)renderWeigh();
 }
@@ -865,7 +907,7 @@ async function loadRecords(){
   try{const [j]=await Promise.all([api("records",{week:wk}),loadCooks(wk)]);if(wk!==weekId)return;records={};(j.records||[]).forEach(r=>records[r.key]=r);recWeek=wk}
   catch(e){setStatus("Couldn't load tick list records.",true)}
 }
-function isOvenLine(p,l){return CATTYPE[p.cat]!=="whole"||stageOf(p,l)===stagesOf(p)[stagesOf(p).length-1]}
+function isOvenLine(p,l){if(l&&l.cooked)return false;return CATTYPE[p.cat]!=="whole"||stageOf(p,l)===stagesOf(p)[stagesOf(p).length-1]}
 function lineDone(dayKey,p,l){
   if(recWeek!==weekId)return false;
   const n=batchCodes(p,l,dayKey).length;
@@ -883,7 +925,17 @@ async function refreshRecords(){ // pick up ticks done on other devices
     const next={};(j.records||[]).forEach(r=>next[r.key]=r);records=next;recWeek=wk;renderBoard();if(!$("ticks").hidden&&!$("ticks").contains(document.activeElement))renderTicks()}catch(e){}
 }
 function recOf(key,meta){return records[key]||(records[key]={key,week:weekId,ticks:{},vals:{},...meta})}
+/* "Stuff in casings, smoke on program 003" → raw step "Stuff in casings" + cook step "Smoke on program 003" */
+function splitCookSteps(rs){const out=[];
+  for(const r of rs){const m=r.step&&r.chk&&r.chk.startsWith("program:")&&/^(.+?),\s*(?:then\s+)?((?:smoke|cook|steam|roast)\b.*)$/i.exec(r.ing);
+    if(m){out.push({...r,ing:m[1].trim(),chk:""});out.push({...r,ing:m[2].charAt(0).toUpperCase()+m[2].slice(1)})}else out.push(r)}
+  return out}
 function tickRows(p,l){
+  if(l&&l.cooked){const st=CATTYPE[p.cat]==="whole"?stagesOf(p)[stagesOf(p).length-1]:null;
+    const all=(recipes||[]).filter(r=>r.p===p.id&&r.r!=="Chilli"&&(!r.r||r.r===(l.v||(p.variants||[])[0]||""))&&(st?r.st===st:!r.st));
+    return all.slice(ovenIndex(all))}
+  const rows0=tickRows0(p,l);return isOvenLine(p,l)?rows0.slice(0,ovenIndex(rows0)):rows0}
+function tickRows0(p,l){
   const rows=(recipes||[]).filter(r=>r.p===p.id&&r.r!=="Chilli"&&(!r.r||r.r===(l.v||(p.variants||[])[0]||""))&&(CATTYPE[p.cat]==="whole"?r.st===stageOf(p,l):!r.st));
   const st=p.steps&&p.steps[stageOf(p,l)];
   return !rows.length&&st?[{p:p.id,st:stageOf(p,l),ing:st,step:1}]:rows;
@@ -895,7 +947,7 @@ function chkInputs(key,i,r,rec,ctx){
   if(c.startsWith("program:")){const pn=c.slice(8),fl=v.fl,tg=coreTarget(ctx);
     const flBox=fl?`<div class="flrep${(fl.coreMax!=null&&tg&&fl.coreMax<tg)||(fl.cover!=null&&fl.cover<90)?" bad":""}"><b>FOOD.LOG${fl.eid?"":" (PDF)"}:</b> ${esc(fl.name||"")} · ${esc(fl.start||"")} → ${esc((fl.end||"").slice(11))} · ${esc(fl.dur||"")}<br>
       ${fl.cover!=null&&fl.cover<90?`<b class="warnx">⚠ FOOD.LOG only recorded ${fl.cover}% of the temperature readings for this cook. Core max below is not reliable.</b><br>`:""}Core max <b>${fl.coreMax??"—"}°C</b>${tg?` (target ${tg}°C)`:""} · Chamber max ${fl.chMax??"—"}°C · Humidity max ${fl.humMax??"—"}%${fl.url?` · <a href="${esc(fl.url)}" target="_blank" rel="noopener">PDF</a>`:""}</div>`:"";
-    const opts=cooksFor(ctx.date,fl&&fl.eid).map(c=>{const used=cookUsedBy(c.eid,key);
+    const opts=cooksFor(ctx.cookDate||ctx.date,fl&&fl.eid).map(c=>{const used=cookUsedBy(c.eid,key);
       return `<option value="${esc(c.eid)}"${fl&&fl.eid===c.eid?" selected":""}>${esc(c.start.slice(11,16))} ${esc(c.name)} · ${cookCover(c)<0.9?`⚠ temps ${Math.round(cookCover(c)*100)}% recorded`:`core max ${c.coreMax??"—"}°C`}${used?" · already used: "+esc(used):""}</option>`}).join("");
     const pick=localMode?"":`<label class="noprint">Smokehouse cycle <select data-cookfor="${esc(key)}" data-fli="${i}"><option value="">${opts?"— choose the FOOD.LOG cycle —":"No cycles synced for this day yet"}</option>${opts}</select></label>`;
     return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label>${pick}${localMode?"":`<button type="button" class="wbtn noprint" data-flup="${esc(key)}" data-fli="${i}">${fl&&!fl.eid?"Replace":"Upload"} PDF instead</button>`}</div>${flBox}`}
@@ -995,18 +1047,18 @@ function summarise(rec,rows){
   });
   const tickable=rows.length;rec.stepsTotal=tickable;rec.stepsDone=Object.values(rec.ticks||{}).filter(Boolean).length;
   const ov=rec.oven||{};
-  if(rec.hasOven)checks.push({label:"Into the cooker (end of raw prep)",value:ov.done?"Yes"+(ov.time?" at "+ov.time:"")+(ov.by?" · signed off by "+ov.by:""):""});
+  if(rec.hasOven)checks.push({label:"Into the oven (end of raw prep)",value:ov.done?"Yes"+(ov.time?" at "+ov.time:"")+(ov.by?" · signed off by "+ov.by:""):""});
   rec.checks=checks;rec.flags=flagsOf(rec,rows);
   if(rec.hasOven&&ov.done){const oi=ovenIndex(rows);let miss=0;for(let i=0;i<oi;i++)if(!(rec.ticks||{})[i])miss++;
-    if(miss)rec.flags.push(`Into the cooker ticked with ${miss} raw prep step(s) above it not ticked`)}
-  if(rec.hasOven&&ov.done&&!ov.by)rec.flags.push("Into the cooker: no sign-off name");
+    if(miss)rec.flags.push(`Into the oven ticked with ${miss} raw prep step(s) above it not ticked`)}
+  if(rec.hasOven&&ov.done&&!ov.by)rec.flags.push("Into the oven: no sign-off name");
 }
 const tickCtx={}; // key -> rows (for flags on change)
 /* Final box on the cook tick lists: product into the cooker = end of the raw prep stage (headed by Shimshi). Ticks the product on the day board. */
 function ovenBox(key,rec){const ov=rec.oven||{};
   const by=STAFF.length?`<select data-rk="${esc(key)}" data-k="oven.by"><option value="">—</option>${STAFF.map(n=>`<option${ov.by===n?" selected":""}>${esc(n)}</option>`).join("")}</select>`:inp(key,"oven.by",ov.by,'type="text" class="wide"');
-  return `<tr class="step oven"><td colspan="2"><b>INTO THE COOKER · END OF RAW PREP</b><div class="chk"><label>Time ${inp(key,"oven.time",ov.time,'type="time"')}</label><label>Signed off by (raw prep: Shimshi) ${by}</label></div></td>
-    <td class="ck"><input type="checkbox" data-rk="${esc(key)}" data-k="oven.done"${ov.done?" checked":""} aria-label="Into the cooker"></td></tr>`}
+  return `<tr class="step oven"><td colspan="2"><b>INTO THE OVEN · END OF RAW PREP</b><div class="chk"><label>Time ${inp(key,"oven.time",ov.time,'type="time"')}</label><label>Signed off by (raw prep: Shimshi) ${by}</label></div></td>
+    <td class="ck"><input type="checkbox" data-rk="${esc(key)}" data-k="oven.done"${ov.done?" checked":""} aria-label="Into the oven"></td></tr>`}
 // the box sits just before the cook-program step: steps above = raw prep, cook and cooling below = cooked side
 function ovenIndex(rows){const i=rows.findIndex(r=>r.chk&&r.chk.startsWith("program:"));return i<0?rows.length:i}
 function tickCard(o){
@@ -1028,9 +1080,9 @@ function tickCard(o){
   const ukDate=o.date?o.date.split("-").reverse().join("/"):"";
   summarise(rec,o.rows);
   const html=`<div class="wcard tcard" data-card="${esc(o.key)}">
-    <div class="ttl">${esc(o.title.toUpperCase())} ${esc(amt)} CHECK LIST</div>
+    <div class="ttl ${o.kind||(o.stage==="Brine"?"raw":"")}">${esc(o.title.toUpperCase())} ${esc(amt)} CHECK LIST</div>
     <div class="tsub">${o.code?`Batch <b>${esc(o.code)}</b> · `:""}${esc(o.meta)}</div>
-    <div class="fields"><label>${brine?"Made by":"Sausage maker"} ${staffSel}</label><label>Date <b>${esc(ukDate)}</b></label><label>Probe ID ${inp(o.key,"probe",rec.probe,'type="text" class="wide"')}</label></div>
+    <div class="fields"><label>${brine?"Made by":o.kind==="cooked"?"Cooked side":"Sausage maker"} ${staffSel}</label><label>Date <b>${esc(ukDate)}</b></label><label>Probe ID ${inp(o.key,"probe",rec.probe,'type="text" class="wide"')}</label></div>
     ${intake}
     ${o.extraTop||""}
     <table class="tl"><thead><tr><th>Ingredients</th><th>Quantity${amt?" "+esc(amt.toLowerCase()):""}</th><th>Tick</th></tr></thead><tbody>${body||`<tr><td colspan="3" class="none">Method not loaded yet.</td></tr>`}</tbody></table>
@@ -1038,12 +1090,12 @@ function tickCard(o){
     <div class="flags" id="fl-${esc(o.key)}">${rec.flags.map(x=>`<p>⚠ ${esc(x)}</p>`).join("")}</div>
     <div class="saved noprint" id="sv-${esc(o.key)}">${rec.updated?"Saved":""}</div>
   </div>`;
-  tickList.push({key:o.key,title:o.title,code:o.code,meta:o.meta,html});
+  tickList.push({key:o.key,title:o.title,code:o.code,meta:o.meta,html,kind:o.kind||(o.stage==="Brine"?"raw":"")});
   return html;
 }
 let tickList=[], tickOpen=null, tickPrintAll=false, repState=null;
 function tickStatus(key){const r=records[key]||{};const d=r.stepsDone||0,t=r.stepsTotal||0,f=(r.flags||[]).length;
-  if(r.hasOven&&r.oven&&r.oven.done)return {cls:"done"+(f?" flag":""),txt:"✓ In the cooker"+(r.oven.time?" "+r.oven.time:"")+(f?` · ⚠ ${f} flagged`:"")};
+  if(r.hasOven&&r.oven&&r.oven.done)return {cls:"done"+(f?" flag":""),txt:"✓ In the oven"+(r.oven.time?" "+r.oven.time:"")+(f?` · ⚠ ${f} flagged`:"")};
   if(t&&d>=t)return {cls:"done"+(f?" flag":""),txt:"✓ Complete"+(f?` · ⚠ ${f} flagged`:"")};
   return {cls:f?"flag":"",txt:(d?`${d} of ${t} ticked`:"Not started")+(f?` · ⚠ ${f} flagged`:"")};}
 function tickBody(name){
@@ -1055,7 +1107,7 @@ function tickBody(name){
       <button type="button" class="wbtn" data-tnav="prev"${i?"":" disabled"}>‹ Prev</button><span class="pos">${i+1} of ${n}</span>
       <button type="button" class="wbtn" data-tnav="next"${i<n-1?"":" disabled"}>Next ›</button></div>${t.html}`}
   return `<div class="tmenu">${tickList.map(t=>{const st=tickStatus(t.key);
-    return `<button type="button" class="tmi ${st.cls}" data-open="${esc(t.key)}"><span class="tt">${esc(t.title)}</span>${t.code?`<span class="tc">${esc(t.code)}</span>`:""}<span class="tm">${esc(t.meta)}</span><span class="ts">${st.txt}</span></button>`}).join("")}</div>`;
+    return `<button type="button" class="tmi ${st.cls}" data-open="${esc(t.key)}"><span class="tt ${t.kind||""}">${esc(t.title)}</span>${t.code?`<span class="tc">${esc(t.code)}</span>`:""}<span class="tm">${esc(t.meta)}</span><span class="ts">${st.txt}</span></button>`}).join("")}</div>`;
 }
 function repButton(){
   if(readOnly||localMode)return "";
@@ -1081,7 +1133,7 @@ function ticksFor(dayKey){
       code:"",kg:L,rows,factor:()=>L,hasIntake:false,product:b.name,stage:"Brine",dayKey,date});
   }
   for(const l of ls_){
-    const p=PMAP[l.p],isWhole=CATTYPE[p.cat]==="whole",stg=isWhole?stageOf(p,l):"Production";
+    const p=PMAP[l.p],isWhole=CATTYPE[p.cat]==="whole",stg=l.cooked?"Cooked":isWhole?stageOf(p,l):"Production";
     const kg=+l.qty,unitOk=(l.unit||"kg")==="kg"&&kg>0;
     const codes=batchCodes(p,l,dayKey),n=codes.length,each=unitOk?kg/n:0;
     const rows=tickRows(p,l);
@@ -1094,10 +1146,10 @@ function ticksFor(dayKey){
         return "";
       };
       const rauch=p.calc==="equilibrium"&&isFirstStage(p,l)&&unitOk?rauchCard(p,{...l,qty:each},true):"";
-      html+=tickCard({key:`${weekId}|${dayKey}|${l.id}|${bi+1}`,title:p.name+(isWhole?" · "+stg:""),
+      html+=tickCard({key:`${weekId}|${dayKey}|${l.id}|${bi+1}`,title:p.name+(isWhole||l.cooked?" · "+stg:""),kind:l.cooked?"cooked":"raw",cookDate:l.from&&l.from.date||null,
         meta:[unitOk?fmt(Math.round(each*100)/100)+" kg "+(isWhole?"green weight":"meat block")+(n>1?` (batch ${bi+1} of ${n})`:""):"Quantity not in kg",l.v,l.note].filter(Boolean).join(" · "),
         code:codes[bi],kg:unitOk?Math.round(each*100)/100:null,rows,factor:()=>each,
-        hasIntake:!isWhole||isFirstStage(p,l),extraRow,extraTop:rauch,
+        hasIntake:!l.cooked&&(!isWhole||isFirstStage(p,l)),extraRow,extraTop:rauch,
         target:p.pickup&&stg===(p.tumble||stagesOf(p)[0])?Math.round(each*(1+p.pickup)*10)/10:null,
         product:p.name,pid:p.id,stage:stg,dayKey,date,oven:isOvenLine(p,l)});
     }
@@ -1129,6 +1181,7 @@ function onTick(e){
   if(t.dataset.k==="oven.done"&&t.checked&&!(rec.oven&&rec.oven.time)){const d=new Date();rec.oven.time=String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");
     const ti=t.closest("tr").querySelector('[data-k="oven.time"]');if(ti)ti.value=rec.oven.time}
   summarise(rec,tickCtx[key]||[]);
+  if(t.dataset.k==="oven.done")syncCooked(key);
   renderBoard();
   const fl=$("fl-"+key);if(fl)fl.innerHTML=rec.flags.map(x=>`<p>⚠ ${esc(x)}</p>`).join("");
   saveRec(key);
