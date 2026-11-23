@@ -301,7 +301,7 @@ const PRODUCTS=[
   {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup",pickup:.40,brine:"brine_navel",flow:{min:1}},
   {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure",brine:"brine_sb60",noCure:true,flow:{min:1}},
   {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine",pickup:.20,tumble:"Tumble",stages:["Inject","Tumble","Cook"],gaps:[{min:5,max:7},{min:1}],brine:"brine_sb60",flow:{min:5,max:7}},
-  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",calc:"equilibrium",stages:["Brine","Smoke & sous vide"],gaps:[{min:14}],autoNext:true,flow:{min:14,what:"Smoke"}},
+  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",calc:"equilibrium",stages:["Brine","Turn 1","Turn 2","Smoke & sous vide"],gaps:[{min:5}],autoNext:true,offsets:[5,10,14],steps:{"Turn 1":"Turn the meat in the brine","Turn 2":"Turn the meat in the brine"},flow:{min:14,what:"Smoke"}},
 
   {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine",pickup:.25,brine:"brine_cb60",flow:{min:1,what:"Smoke"}},
   {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine",pickup:.40,brine:"brine_lg50",noCure:true,flow:{min:1}},
@@ -396,6 +396,8 @@ function chilliCode(l,dayKey){const di=DAYS.findIndex(d=>d[0]===dayKey);const d=
 
 /* Cook-date suggestion for whole muscle lines at the brine / inject stage */
 const DAYKEYS=["sun","mon","tue","wed","thu","fri","sat"];
+function closestWorkday(d){const t=new Date(d);if(t.getDay()===6)t.setDate(t.getDate()-1);else if(t.getDay()===0)t.setDate(t.getDate()+1);return t}
+function autoDates(p,brineDay){return p.offsets.map(o=>closestWorkday(addDays(brineDay,o)))}
 function nextWorkday(d){const t=new Date(d);while(t.getDay()===0||t.getDay()===6)t.setDate(t.getDate()+1);return t}
 function shortDate(d){return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][d.getDay()]+" "+d.getDate()+" "+MONTHS[d.getMonth()].slice(0,3)}
 function linksOf(p,l){if(!l)return [];if(l.links)return l.links;
@@ -412,7 +414,8 @@ function cookSelHtml(p,l,id,dis){
   if(!l||!isBrineStage(p,l)||!(+l.qty>0))return "";
   const nxt=stagesOf(p)[1],what=nxt.toLowerCase();
   const opts=cookOptions(p,selDay);
-  if(p.autoNext)return `<span class="ckauto">${esc(nxt)} ${shortDate(l.ck?parseIso(l.ck):opts[0])}</span>`;
+  if(p.autoNext){const lk=linksOf(p,l);const ds=lk.length===stagesOf(p).length-1?lk.map(k=>[k.st,parseIso(k.d)]):autoDates(p,addDays(monday,selDay)).map((d,i)=>[stagesOf(p)[i+1],d]);
+    return `<span class="ckauto">${ds.map(([st,d])=>esc(st)+" "+shortDate(d)).join(" · ")}</span>`}
   if(l.ck&&!opts.some(d=>iso(d)===l.ck))opts.push(parseIso(l.ck));
   return `<select id="k-${id}" data-f="ckd" aria-label="${esc(p.name)} ${what} day" class="cksel${l.ck?" set":""}"${dis}>
     <option value="">Choose ${what} day…</option>
@@ -435,7 +438,8 @@ function setCookDay(srcId,val){
     const codes=batchCodes(p,{...src,id:srcId},k);
     const ss=stagesOf(p),gs=gapsOf(p);let t=parseIso(val);const links=[];
     for(let i=1;i<ss.length;i++){
-      if(i>1)t=nextWorkday(addDays(t,(gs[i-1]||{min:1}).min));
+      if(p.offsets)t=autoDates(p,addDays(monday,selDay))[i-1];
+      else if(i>1)t=nextWorkday(addDays(t,(gs[i-1]||{min:1}).min));
       const wk=iso(addDays(t,1-t.getDay())),dk=DAYKEYS[t.getDay()],nid=newId();
       putLine(wk,dk,nid,buildNext(src,ss[i],codes));links.push({id:nid,wk,dk,st:ss[i],d:iso(t)});
     }
@@ -526,7 +530,7 @@ function onField(e){
 function autoLink(id){
   const line=dayLines(DAYS[selDay][0])[id];if(!line)return false;const p=PMAP[line.p];
   if(!p||!p.autoNext||!isBrineStage(p,line))return false;
-  if(+line.qty>0&&!line.ck){setCookDay(id,iso(cookOptions(p,selDay)[0]));return true}
+  if(+line.qty>0&&(!line.ck||linksOf(p,line).length!==stagesOf(p).length-1)){setCookDay(id,iso(autoDates(p,addDays(monday,selDay))[0]));return true}
   if(!(+line.qty>0)&&line.ck){setCookDay(id,"");return true}
   return false;
 }
@@ -790,7 +794,8 @@ async function refreshRecords(){ // pick up ticks done on other devices
 function recOf(key,meta){return records[key]||(records[key]={key,week:weekId,ticks:{},vals:{},...meta})}
 function tickRows(p,l){
   const rows=(recipes||[]).filter(r=>r.p===p.id&&r.r!=="Chilli"&&(!r.r||r.r===(l.v||(p.variants||[])[0]||""))&&(CATTYPE[p.cat]==="whole"?r.st===stageOf(p,l):!r.st));
-  return rows;
+  const st=p.steps&&p.steps[stageOf(p,l)];
+  return !rows.length&&st?[{p:p.id,st:stageOf(p,l),ing:st,step:1}]:rows;
 }
 function inp(key,path,val,attrs){return `<input data-rk="${esc(key)}" data-k="${path}" value="${esc(val??"")}" ${attrs||'type="text"'}>`}
 function chkInputs(key,i,r,rec,ctx){
