@@ -92,6 +92,7 @@ button.stage:hover{border-color:var(--fg);color:var(--fg)}
 .chl{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-bottom:4px;white-space:nowrap}
 .chl input{width:70px!important;text-align:right}
 .cksel.set{border-color:var(--ok)!important;color:var(--ok)}
+.ckauto{display:block;margin-top:6px;font-size:14px;color:var(--ok);font-weight:600}
 .sug{margin-top:4px;font-size:12px;color:var(--accent);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .sug.done{color:var(--ok)}
 .sug button{border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:5px;padding:2px 8px;font-size:12px;font-weight:600;cursor:pointer}
@@ -300,7 +301,7 @@ const PRODUCTS=[
   {id:"navel_pastrami",cat:"beef",name:"Navel pastrami",sub:"40% pickup",pickup:.40,brine:"brine_navel",flow:{min:1}},
   {id:"roast_beef",cat:"beef",name:"Roast beef",sub:"60L brine · no cure",brine:"brine_sb60",noCure:true,flow:{min:1}},
   {id:"leanside_chuck",cat:"beef",name:"Leanside chuck",sub:"60L salt beef brine",pickup:.20,tumble:"Tumble",stages:["Inject","Tumble","Cook"],gaps:[{min:5,max:7},{min:1}],brine:"brine_sb60",flow:{min:5,max:7}},
-  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",calc:"equilibrium",stages:["Brine","Smoke & sous vide"],gaps:[{min:14}],flow:{min:14,what:"Smoke"}},
+  {id:"rauchfleisch",cat:"beef",name:"Rauchfleisch",sub:"2-week cure",calc:"equilibrium",stages:["Brine","Smoke & sous vide"],gaps:[{min:14}],autoNext:true,flow:{min:14,what:"Smoke"}},
 
   {id:"chicken_breast",cat:"poultry",name:"Chicken breast",sub:"Smoked · 60L brine",pickup:.25,brine:"brine_cb60",flow:{min:1,what:"Smoke"}},
   {id:"chicken_legs",cat:"poultry",name:"Chicken legs",sub:"Smoked · 50L brine",pickup:.40,brine:"brine_lg50",noCure:true,flow:{min:1}},
@@ -411,6 +412,7 @@ function cookSelHtml(p,l,id,dis){
   if(!l||!isBrineStage(p,l)||!(+l.qty>0))return "";
   const nxt=stagesOf(p)[1],what=nxt.toLowerCase();
   const opts=cookOptions(p,selDay);
+  if(p.autoNext)return `<span class="ckauto">${esc(nxt)} ${shortDate(l.ck?parseIso(l.ck):opts[0])}</span>`;
   if(l.ck&&!opts.some(d=>iso(d)===l.ck))opts.push(parseIso(l.ck));
   return `<select id="k-${id}" data-f="ckd" aria-label="${esc(p.name)} ${what} day" class="cksel${l.ck?" set":""}"${dis}>
     <option value="">Choose ${what} day…</option>
@@ -515,9 +517,18 @@ function onField(e){
   const btEl=row.querySelector(".bt");if(btEl)btEl.textContent=+line.qty>0?batchText(line):"";
   if(linksOf(p,line).length&&(f==="qty"||f==="v"||f==="unit"))relinkAll(line,id);
   if(f==="st"&&linksOf(p,line).length&&!isFirstStage(p,line)){setCookDay(id,"");return}
+  if(f==="st"&&autoLink(id))return;
   if(f==="st")render();
   queue(k,id,{...line});
   renderBoard();
+}
+// Products with autoNext (rauchfleisch): the next stage is set automatically to the earliest day (2 weeks after brining), no dropdown
+function autoLink(id){
+  const line=dayLines(DAYS[selDay][0])[id];if(!line)return false;const p=PMAP[line.p];
+  if(!p||!p.autoNext||!isBrineStage(p,line))return false;
+  if(+line.qty>0&&!line.ck){setCookDay(id,iso(cookOptions(p,selDay)[0]));return true}
+  if(!(+line.qty>0)&&line.ck){setCookDay(id,"");return true}
+  return false;
 }
 function removeLine(id){
   const k=DAYS[selDay][0];const lines=dayLines(k);
@@ -1072,7 +1083,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!localMod
 $("board").addEventListener("click",e=>{const d=e.target.closest(".day");if(!d)return;selDay=+d.dataset.day;ls("deli.selDay",String(selDay));render();
   if(window.matchMedia("(max-width:900px)").matches)$("panel").scrollIntoView({block:"start"})});
 $("entries").addEventListener("input",e=>{if(e.target.matches("input"))onField(e)});
-$("entries").addEventListener("change",e=>{if(e.target.matches("select"))onField(e);else if(e.target.dataset.f==="qty")render()});
+$("entries").addEventListener("change",e=>{if(e.target.matches("select"))onField(e);else if(e.target.dataset.f==="qty"){const r=e.target.closest(".row");if(!(r&&autoLink(r.dataset.line)))render()}});
 $("entries").addEventListener("click",e=>{const b=e.target.closest("button[data-act]");if(!b)return;
   const row=b.closest(".row");if(b.dataset.act==="del")removeLine(row.dataset.line);else addLine(b.dataset.p)});
 $("search").addEventListener("input",renderEntries);
