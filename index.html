@@ -680,7 +680,7 @@ function brineCard(bid,items){
 }
 function rauchCard(p,l,noEry){
   const kg=+l.qty, water=kg*0.5, tot=kg+water;
-  const t=+(ls("deli.rauchTarget")||0);
+  const t=+(ls("deli.rauchTarget")||150); /* Eli 23 Nov: 18kg meat, 9L water, 837g salt, 67.5g cure = 150 mg/kg (meat + water) */
   const cureG=t>0?t*tot/(cureStrength*10):null;
   const ery=noEry?[]:(recipes||[]).filter(r=>r.p===p.id&&r.st===stageOf(p,l)&&!r.step);
   return `<table><thead><tr><th></th><th>Equilibrium wet cure</th><th class="n">Weigh</th></tr></thead><tbody>
