@@ -101,8 +101,11 @@ button.stage:hover{border-color:var(--fg);color:var(--fg)}
 .type p{margin:2px 0 0;font-size:13px;color:var(--muted)}
 .c-var{display:flex;flex-direction:column;gap:4px;min-width:0}
 .c-qty{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pa{display:grid;grid-template-columns:1fr 1fr;gap:4px}.pa label{display:flex;flex-direction:column;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;gap:1px}
+.row input.qty.act{border-color:var(--ok)}
+.qhead{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px}
 .bt{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums;min-height:1em}
-.row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 92px 76px minmax(0,1.4fr) 64px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
+.row{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) 176px 76px minmax(0,1.4fr) 64px;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
 .row:last-child{border-bottom:0}
 .row.has{background:linear-gradient(90deg,color-mix(in srgb,var(--c) 10%,transparent),transparent 70%)}
 .row.has .pn{color:var(--fg)}
@@ -126,12 +129,13 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 @media (max-width:900px){
   .board{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:4px}
   .day{flex:0 0 min(240px,78vw);scroll-snap-align:start}
-  .row{grid-template-columns:minmax(0,1fr) 84px 70px 64px;grid-template-areas:"pn qty unit acts" "var note note note"}
+  .row{grid-template-columns:minmax(0,1fr) 150px 64px 64px;grid-template-areas:"pn qty unit acts" "var note note note"}
   .row .pn{grid-area:pn}.row .c-var{grid-area:var}.row .c-qty{grid-area:qty}.row .c-unit{grid-area:unit}.row .c-note{grid-area:note}.row .acts{grid-area:acts}
   .row .c-var:empty{display:none}
   .row.sub .pn{visibility:visible;font-size:0;border-left-color:var(--c)}
 }
 .wbtn{border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:6px;padding:6px 12px;font:inherit;font-weight:600;cursor:pointer}
+.otab{width:100%;border-collapse:collapse;margin:6px 0 14px;table-layout:fixed}.otab th:nth-child(1){width:36%}.otab th:nth-child(2){width:14%}.otab th:nth-child(3){width:30%}.otab th,.otab td{border:1px solid var(--line);padding:6px 8px;text-align:left}.otab td.n,.otab th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}.otab small{color:var(--muted)}
 .weigh{margin-top:16px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:16px}
 .weigh[hidden]{display:none}
 .weigh .wh{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap}
@@ -189,9 +193,10 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
 .tcard textarea{width:100%;min-height:44px;margin-top:6px}
 @media print{
   body *{visibility:hidden}
-  body[data-print=weigh] #weigh,body[data-print=weigh] #weigh *,body[data-print=ticks] #ticks,body[data-print=ticks] #ticks *{visibility:visible}
-  #weigh,#ticks{position:absolute;left:0;top:0;width:100%;border:0;margin:0;padding:0;background:#fff;color:#000}
-  #weigh .noprint,#ticks .noprint{display:none}
+  body[data-print=weigh] #weigh,body[data-print=weigh] #weigh *,body[data-print=order] #order,body[data-print=order] #order *,body[data-print=ticks] #ticks,body[data-print=ticks] #ticks *{visibility:visible}
+  #weigh,#ticks,#order{position:absolute;left:0;top:0;width:100%;border:0;margin:0;padding:0;background:#fff;color:#000}
+  #weigh .noprint,#ticks .noprint,#order .noprint{display:none}
+  .otab th,.otab td{border-color:#000!important}
   .tcard{break-after:page}
   .tcard input,.tcard select,.tcard textarea{border:0;border-bottom:1px solid #000;border-radius:0}
   .tcard table.tl th,.tcard table.tl td{border-color:#000}.tcard tr.step td{background:#ddd!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -235,12 +240,14 @@ footer{font-family:var(--display);letter-spacing:.3em;text-transform:uppercase;f
         <label><input type="checkbox" id="plannedOnly"> Planned only</label>
         <button type="button" class="wbtn" id="openWeigh">Weigh-out sheet</button>
         <button type="button" class="wbtn" id="openTicks">Tick lists</button>
+        <button type="button" class="wbtn" id="openOrder">Butcher order</button>
       </div>
     </div>
     <div id="entries"></div>
   </section>
   <section class="weigh" id="weigh" hidden aria-label="Weigh-out sheet"></section>
   <section class="weigh" id="ticks" hidden aria-label="Tick lists"></section>
+  <section class="weigh" id="order" hidden aria-label="Butcher order"></section>
   <div class="status" id="status"></div>
   <footer>Plan · Produce · Pack · Deliver</footer>
 </div>
@@ -339,6 +346,10 @@ try{const d=ls("deli.selDay");if(d!==null&&+d>=0&&+d<5)selDay=+d}catch(e){}
 
 function linesFor(day){const l=(plan.days?.[day]?.lines)||{};
   return Object.entries(l).filter(([,v])=>v&&typeof v==="object").map(([id,v])=>({id,...v})).sort((a,b)=>(a.o||0)-(b.o||0))}
+/* Planned kg (entered the week before, drives the butcher order) and Actual kg (entered on the day from what the butcher delivered).
+   l.qty = actual if entered, else planned: everything downstream (weigh-outs, tick lists, batches) uses l.qty. Old lines with only qty count as planned. */
+function pqOf(l){return !l?null:l.pq!==undefined?l.pq:(l.qty??null)}
+function setQ(l){l.qty=l.aq!=null?l.aq:l.pq}
 function isReal(l){return (l.qty!==null&&l.qty!==""&&l.qty!==undefined&&+l.qty>0)||(l.note&&l.note.trim())}
 
 /* ---------- Render ---------- */
@@ -423,7 +434,7 @@ function cookSelHtml(p,l,id,dis){
   </select>`;
 }
 function buildNext(src,st,codes){const p=PMAP[src.p];
-  return {p:src.p,qty:src.qty,unit:src.unit||"kg",v:src.v||null,st,src:1,start:src.inj,codes,note:stagesOf(p)[0]+" "+shortDate(parseIso(src.inj)),o:Date.now()};
+  return {p:src.p,qty:src.qty,pq:pqOf(src),aq:src.aq??null,unit:src.unit||"kg",v:src.v||null,st,src:1,start:src.inj,codes,note:stagesOf(p)[0]+" "+shortDate(parseIso(src.inj)),o:Date.now()};
 }
 function relinkAll(src,id){const p=PMAP[src.p];const codes=batchCodes(p,{...src,id},DAYS[selDay][0]);
   linksOf(p,src).forEach(k=>putLine(k.wk,k.dk,k.id,buildNext(src,k.st,codes)))}
@@ -461,7 +472,7 @@ function rowHtml(p,l,isFirst,dayKey){
   return `<div class="row${has?" has":""}${isFirst?"":" sub"}" data-line="${id}" data-p="${p.id}">
     <div class="pn">${esc(p.name)}<small${p.norecipe?' class="nr"':""}>${esc(p.sub)}</small></div>
     <div class="c-var">${vSel}</div>
-    <div class="c-qty"><input class="qty" id="q-${id}" data-f="qty" inputmode="decimal" placeholder="—" value="${l&&l.qty!==null&&l.qty!==undefined?esc(l.qty):""}" aria-label="${esc(p.name)} quantity"${dis}><span class="bt" id="b-${id}">${esc(bt)}</span></div>
+    <div class="c-qty"><div class="pa"><label>Planned<input class="qty" id="q-${id}" data-f="pq" inputmode="decimal" placeholder="—" value="${pqOf(l)!=null?esc(pqOf(l)):""}" aria-label="${esc(p.name)} planned kg"${dis}></label><label>Actual<input class="qty act" id="a-${id}" data-f="aq" inputmode="decimal" placeholder="—" value="${l&&l.aq!=null?esc(l.aq):""}" aria-label="${esc(p.name)} actual kg"${dis}></label></div><span class="bt" id="b-${id}">${esc(bt)}</span></div>
     <div class="c-unit"><select id="u-${id}" data-f="unit" aria-label="Unit"${dis}>${UNITS.map(u=>`<option${u===unit?" selected":""}>${u}</option>`).join("")}</select></div>
     <div class="c-note">${p.chilli?`<label class="chl" for="c-${id}">Of which chilli (kg)<input id="c-${id}" data-f="ch" inputmode="decimal" placeholder="0" value="${l&&l.ch!=null?esc(l.ch):""}"${dis}></label>`:""}<input id="n-${id}" data-f="note" placeholder="Note" value="${esc(l?.note||"")}" aria-label="${esc(p.name)} note"${dis}></div>
     <div class="acts">${acts}</div>
@@ -493,7 +504,7 @@ function renderEntries(){
   $("entries").innerHTML=html||`<div class="empty">${only?"Nothing planned for "+name+" yet. Untick “Planned only” to see every product.":"No products match “"+esc(q)+"”."}</div>`;
   if(fid){const el=$(fid);if(el){el.focus();if(ss&&el.setSelectionRange)try{el.setSelectionRange(ss[0],ss[1])}catch(e){}}}
 }
-function render(){renderBoard();renderEntries();if(!$("weigh").hidden)renderWeigh();if(!$("ticks").hidden&&!$("ticks").contains(document.activeElement)){if(recWeek!==weekId)loadRecords().then(renderTicks);else renderTicks()}}
+function render(){renderBoard();renderEntries();if(!$("weigh").hidden)renderWeigh();if(!$("order").hidden)renderOrder();if(!$("ticks").hidden&&!$("ticks").contains(document.activeElement)){if(recWeek!==weekId)loadRecords().then(renderTicks);else renderTicks()}}
 
 /* ---------- Editing ---------- */
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
@@ -505,7 +516,7 @@ function onField(e){
   if(f==="ckd"){setCookDay(row.dataset.line,el.value);return}
   let id=row.dataset.line;const p=PMAP[row.dataset.p];
   if(id.startsWith("new-")){
-    if(f!=="qty"&&f!=="note"&&f!=="ch")return; // changing unit/variant on a blank row waits until something is entered
+    if(f!=="qty"&&f!=="pq"&&f!=="aq"&&f!=="note"&&f!=="ch")return; // changing unit/variant on a blank row waits until something is entered
     if(!el.value.trim())return;
     const nid=newId();
     const maxO=Math.max(0,...Object.values(lines).filter(Boolean).map(l=>l.o||0));
@@ -515,11 +526,12 @@ function onField(e){
     id=nid;
   }
   const line=lines[id];if(!line)return;
-  if(f==="qty"||f==="ch"){const v=el.value.replace(",",".").trim();line[f]=v===""?null:(isNaN(+v)?line[f]:+v)}
+  if(f==="pq"||f==="aq"){if(line.pq===undefined)line.pq=line.qty??null;const v=el.value.replace(",",".").trim();line[f]=v===""?null:(isNaN(+v)?line[f]:+v);setQ(line)}
+  else if(f==="qty"||f==="ch"){const v=el.value.replace(",",".").trim();line[f]=v===""?null:(isNaN(+v)?line[f]:+v)}
   else line[f]=el.value;
   row.classList.toggle("has",isReal(line));
   const btEl=row.querySelector(".bt");if(btEl)btEl.textContent=+line.qty>0?batchText(line):"";
-  if(linksOf(p,line).length&&(f==="qty"||f==="v"||f==="unit"))relinkAll(line,id);
+  if(linksOf(p,line).length&&(f==="qty"||f==="pq"||f==="aq"||f==="v"||f==="unit"))relinkAll(line,id);
   if(f==="st"&&linksOf(p,line).length&&!isFirstStage(p,line)){setCookDay(id,"");return}
   if(f==="st"&&autoLink(id))return;
   if(f==="st")render();
@@ -756,7 +768,7 @@ function renderWeigh(){
   const status=localMode?"Not connected, so recipes can't load. Connect in Settings."
     :recipes===null?(recipesErr?recipeErrText():"Loading recipes…"):!recipes.length?"No recipes in the sheet yet.":"";
   $("weigh").innerHTML=`<div class="wh"><div><h2>Weigh-out · ${name} ${d.getDate()} ${MONTHS[d.getMonth()]}</h2>
-    <p>All amounts in grams, scaled exactly to the planned kg. Over ${TUMBLER_MAX} kg splits into equal batches.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
+    <p>All amounts in grams, scaled exactly to the actual kg (planned kg until the actual is entered). Over ${TUMBLER_MAX} kg splits into equal batches.</p>${status?`<p class="none">${esc(status)}</p>`:""}</div>
     <div class="noprint"><button type="button" class="wbtn" id="printWeigh">Print</button> <button type="button" class="wbtn" id="closeWeigh">Close</button></div></div>
     <p class="noprint meta"><label>Cure strength <input type="number" min="0.1" step="0.01" value="${cureStrength}" data-f="curePct" style="width:70px"> % nitrite</label> (HACCP plan says 6%: confirm on the tub label)</p>
     ${brineCards(byCat)}
@@ -769,6 +781,52 @@ $("weigh").addEventListener("change",e=>{const t=e.target,f=t.dataset.f;if(!f)re
   else if(f==="rauchTarget"){ls("deli.rauchTarget",String(Math.max(0,+t.value||0)))}
   renderWeigh()});
 $("weigh").addEventListener("click",e=>{if(e.target.id==="printWeigh"){document.body.dataset.print="weigh";window.print()}else if(e.target.id==="closeWeigh")$("weigh").hidden=true});
+
+/* ---------- Butcher order: from the PLANNED kg of the week on screen ---------- */
+// Meat the butcher supplies. Minced products: these recipe rows, scaled to planned kg. Whole muscle: the product at green weight.
+const BUTCHER_RE=/trim|mince|chicken|skin|turkey|chuck|brisket|flank|lean beef|\bfat\b|liver/i, NOT_BUTCHER_RE=/flavour|extract|brine|oil|starch|onion|pepper|olive/i;
+function isButcherItem(ing){return BUTCHER_RE.test(ing)&&!NOT_BUTCHER_RE.test(ing)}
+function orderItems(k){
+  const items={},miss=[];
+  const add=(name,kg,unit,forWhat)=>{const key=name+"|"+unit;const it=items[key]||(items[key]={name,unit,kg:0,for:new Set()});it.kg+=kg;it.for.add(forWhat)};
+  for(const l of linesFor(k)){
+    const p=PMAP[l.p],pq=+pqOf(l);if(!p||!(pq>0)||l.src)continue;
+    const unit=l.unit||"kg",isWhole=CATTYPE[p.cat]==="whole";
+    if(isWhole){if(isFirstStage(p,l))add(p.name+(l.v?" ("+l.v+")":""),pq,unit,p.name);continue}
+    if(unit!=="kg"){add(p.name+" (meat)",pq,unit,p.name);continue}
+    const rows=recipes?recipeRows(p,{...l,qty:pq}).filter(r=>!r.step&&isButcherItem(r.ing)):[];
+    if(!rows.length){miss.push(p.name+" "+fmt(pq)+" kg");continue}
+    rows.forEach(r=>add(r.ing,r.g*pq/r.per/1000,"kg",p.name));
+  }
+  return {items:Object.values(items).sort((a,b)=>a.name.localeCompare(b.name)),miss};
+}
+function orderTable(list){
+  return `<table class="otab"><thead><tr><th>Item</th><th class="n">Order</th><th>For</th><th class="n">Received (kg)</th></tr></thead><tbody>${list.map(it=>
+    `<tr><td><b>${esc(it.name)}</b></td><td class="n">${fmt(Math.round(it.kg*10)/10)} ${esc(it.unit)}</td><td><small>${esc([...it.for].join(", "))}</small></td><td></td></tr>`).join("")}</tbody></table>`;
+}
+function renderOrder(){
+  const fri=addDays(monday,4);
+  const status=localMode?"Not connected, so recipes can't load: minced products can't be broken down into meat. Connect in Settings."
+    :recipes===null?(recipesErr?recipeErrText():"Loading recipes…"):"";
+  let days="",tot={},anyMiss=[];
+  for(let i=0;i<DAYS.length;i++){
+    const [k,name]=DAYS[i],d=addDays(monday,i),{items,miss}=orderItems(k);
+    anyMiss.push(...miss.map(m=>name+": "+m));
+    items.forEach(it=>{const key=it.name+"|"+it.unit;const t=tot[key]||(tot[key]={name:it.name,unit:it.unit,kg:0,for:new Set()});t.kg+=it.kg;it.for.forEach(f=>t.for.add(f))});
+    if(items.length)days+=`<h3>For ${name} ${d.getDate()} ${MONTHS[d.getMonth()]} production</h3>${orderTable(items)}`;
+  }
+  const totList=Object.values(tot).sort((a,b)=>a.name.localeCompare(b.name));
+  const now=new Date();
+  $("order").innerHTML=`<div class="wh"><div><h2>Butcher order · w/c ${monday.getDate()} ${MONTHS[monday.getMonth()]} ${monday.getFullYear()}</h2>
+    <p>D'Eli deli · from the <b>planned</b> kg for Mon ${monday.getDate()} – Fri ${fri.getDate()} ${MONTHS[fri.getMonth()]}. Whole muscle at green weight; minced products broken down into their meat from the recipes. Printed ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()} ${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}.</p>
+    ${status?`<p class="none noprint">${esc(status)}</p>`:""}</div>
+    <div class="noprint"><button type="button" class="wbtn" id="printOrder">Print / Save as PDF</button> <button type="button" class="wbtn" id="closeOrder">Close</button></div></div>
+    ${totList.length?`<h3>Week total</h3>${orderTable(totList)}${days}`:`<p>Nothing planned for this week yet. Fill in the <b>Planned</b> column first.</p>`}
+    ${anyMiss.length?`<p class="none">Not broken down (recipe not loaded): ${esc(anyMiss.join("; "))}</p>`:""}
+    <p style="margin-top:18px">Ordered by: ______________________ &nbsp; Date: ____________ &nbsp; Butcher confirmed: ______________________</p>`;
+}
+$("openOrder").onclick=()=>{$("order").hidden=false;renderOrder();$("order").scrollIntoView({block:"start"});if(!localMode&&!recipes)loadRecipes().then(renderOrder)};
+$("order").addEventListener("click",e=>{if(e.target.id==="printOrder"){document.body.dataset.print="order";window.print()}else if(e.target.id==="closeOrder")$("order").hidden=true});
 
 /* ---------- Tick lists (HACCP). One per batch; records saved to the sheet's Records tab ---------- */
 let records={}, recWeek=null; const recTimers={};
@@ -1088,7 +1146,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&!localMod
 $("board").addEventListener("click",e=>{const d=e.target.closest(".day");if(!d)return;selDay=+d.dataset.day;ls("deli.selDay",String(selDay));render();
   if(window.matchMedia("(max-width:900px)").matches)$("panel").scrollIntoView({block:"start"})});
 $("entries").addEventListener("input",e=>{if(e.target.matches("input"))onField(e)});
-$("entries").addEventListener("change",e=>{if(e.target.matches("select"))onField(e);else if(e.target.dataset.f==="qty"){const r=e.target.closest(".row");if(!(r&&autoLink(r.dataset.line)))render()}});
+$("entries").addEventListener("change",e=>{if(e.target.matches("select"))onField(e);else if(["qty","pq","aq"].includes(e.target.dataset.f)){const r=e.target.closest(".row");if(!(r&&autoLink(r.dataset.line)))render()}});
 $("entries").addEventListener("click",e=>{const b=e.target.closest("button[data-act]");if(!b)return;
   const row=b.closest(".row");if(b.dataset.act==="del")removeLine(row.dataset.line);else addLine(b.dataset.p)});
 $("search").addEventListener("input",renderEntries);
