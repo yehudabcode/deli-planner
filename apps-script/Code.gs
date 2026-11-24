@@ -174,7 +174,15 @@ function cooksHtml_(week, recs) {
 /* ---------- Smoker live view + alerts (sent every 5 min by tools/FOODLOG-live.ps1) ---------- */
 // Script property ALERT_TO: comma-separated emails for smoker alerts (default shimshi@mhmeats.co.uk).
 function liveSheet_() { return sheet_('Live', ['Live JSON', 'Received']); }
-function alertTo_() { return String(props_().getProperty('ALERT_TO') || 'shimshi@mhmeats.co.uk'); }
+// Script property ALERT_ERRORS_TO: emails that get ERRORS ONLY (smoker alarm, no data from Eli's PC). Default eli@mhmeats.co.uk.
+// Anyone listed there is taken off the full list, so they never get "cycle finished" or "data is back" emails.
+function emails_(v) { return String(v || '').split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(String); }
+function errorsTo_() { const v = props_().getProperty('ALERT_ERRORS_TO'); return emails_(v === null ? 'eli@mhmeats.co.uk' : v); }
+function alertTo_(isError) {
+  const errs = errorsTo_();
+  const all = emails_(props_().getProperty('ALERT_TO') || 'shimshi@mhmeats.co.uk').filter(function (e) { return errs.indexOf(e) < 0; });
+  return (isError ? all.concat(errs) : all).filter(function (e, i, a) { return a.indexOf(e) === i; }).join(',');
+}
 function hm_(iso) { return iso ? String(iso).replace('T', ' ').slice(0, 16) : ''; }
 function saveLive_(live) {
   const sh = liveSheet_();
@@ -189,19 +197,18 @@ function saveLive_(live) {
   if (prev) {
     if (prev.running && prev.running !== state.running) {
       const done = cycles.filter(function (c) { return String(c.id) === prev.running; })[0];
-      if (done && !isCleaning_(done.program)) mails.push(['Smoker: ' + done.program + ' finished',
+      if (done && !isCleaning_(done.program)) mails.push([false, 'Smoker: ' + done.program + ' finished',
         '<p><b>' + esc_(done.program) + '</b> finished at ' + esc_(hm_(done.end)) + ' (started ' + esc_(hm_(done.start)) + ').</p>' +
         '<p>Core max ' + (done.coreMax == null ? '—' : done.coreMax + '°C') + ' · chamber max ' + (done.chMax == null ? '—' : done.chMax + '°C') + '</p>']);
     }
     alarms.forEach(function (a) {
-      if ((prev.alarms || []).indexOf(String(a.id)) < 0) mails.push(['Smoker ALARM: ' + a.info + (a.error ? ' (error ' + a.error + ')' : ''),
+      if ((prev.alarms || []).indexOf(String(a.id)) < 0) mails.push([true, 'Smoker ALARM: ' + a.info + (a.error ? ' (error ' + a.error + ')' : ''),
         '<p>The smoker raised <b>' + esc_(a.info) + '</b>' + (a.error ? ' (error ' + esc_(a.error) + ')' : '') + ' at ' + esc_(hm_(a.start)) + '.</p><p>Someone needs to check it.</p>']);
     });
-    if (prev.stale) mails.push(['Smoker data is back', '<p>Readings from Eli\'s PC are coming through again.</p>']);
+    if (prev.stale) mails.push([false, 'Smoker data is back', '<p>Readings from Eli\'s PC are coming through again.</p>']);
   }
   p.setProperty('LIVE_STATE', JSON.stringify(state));
-  const to = alertTo_();
-  mails.forEach(function (m) { try { MailApp.sendEmail({ to: to, subject: m[0], htmlBody: m[1] + '<p style="color:#666">Deli Planner smoker alert · live view: https://yehudabcode.github.io/deli-planner/smoker.html</p>' }); } catch (e) {} });
+  mails.forEach(function (m) { const to = alertTo_(m[0]); if (!to) return; try { MailApp.sendEmail({ to: to, subject: m[1], htmlBody: m[2] + '<p style="color:#666">Deli Planner smoker alert · live view: https://yehudabcode.github.io/deli-planner/smoker.html</p>' }); } catch (e) {} });
   return { alerts: mails.length };
 }
 function readLive_() {
@@ -218,7 +225,7 @@ function checkLive() {
   const age = live && live.received ? (Date.now() - new Date(live.received).getTime()) / 60000 : 9999;
   if (age > 30 && !state.stale) {
     state.stale = true; p.setProperty('LIVE_STATE', JSON.stringify(state));
-    try { MailApp.sendEmail({ to: alertTo_(), subject: 'Smoker: no data from Eli\'s PC',
+    try { MailApp.sendEmail({ to: alertTo_(true), subject: 'Smoker: no data from Eli\'s PC',
       htmlBody: '<p>No smoker readings have arrived for ' + Math.round(age) + ' minutes.</p><p>Eli\'s PC may be off or asleep, or FOOD.LOG closed. <b>Temperatures are not being recorded until it is fixed.</b></p>' }); } catch (e) {}
   }
 }
