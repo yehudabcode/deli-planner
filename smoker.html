@@ -42,6 +42,13 @@ label{display:flex;flex-direction:column;gap:4px;font-size:14px}
 input{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:inherit}
 button{font:inherit;font-weight:600;padding:9px 14px;border-radius:6px;border:1px solid var(--accent);background:var(--accent);color:#fff}
 .muted{color:var(--muted);font-size:14px}
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin:10px 0 6px}.bar i{display:block;height:100%;background:var(--warn)}
+.stepl{display:flex;justify-content:space-between;gap:8px;font-weight:600}
+.tile .s{font-size:13px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .s b{color:var(--ok)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.chip{font-size:12px;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--ok);color:#fff}
+details{margin-top:12px}summary{cursor:pointer;color:var(--muted);font-size:14px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:13px;margin:8px 0 0}dt{color:var(--muted)}dd{margin:0}
 </style>
 </head>
 <body>
@@ -92,18 +99,32 @@ function render(live){
   const cyc=live.cycles||[],run=cyc.find(c=>!c.end),last=cyc.find(c=>c.end&&!isClean(c.program))||cyc.find(c=>c.end);
   const L=live.latest||{};
   const stale=age>15?`<div class="card stale">⚠ No data from Eli's PC for ${dur(age)}. The PC may be off or asleep, or FOOD.LOG closed. Temperatures are not being recorded.</div>`:"";
-  const status=run?`<div class="card status"><span class="pill run">Running</span><div class="prog">${esc(run.program)}</div>
+  // minutes since the PC sent this (FOOD.LOG's clock can differ from the phone's, so its own times are used)
+  const ex=Math.max(0,live.received?(Date.now()-new Date(live.received).getTime())/60000:0);
+  const P=run&&live.panel;
+  const ON={Heating:"Heat",Humidifying:"Steam / humidity",Smoke:"Smoke",Smoking:"Smoke",Cooling:"Cooling",Showering:"Shower"};
+  const status=P?`<div class="card status"><span class="pill run">Running</span><div class="prog">${run.recipeNo!=null?esc(run.recipeNo+1)+" ":""}${esc(run.program)}</div>
+      ${P.steps?`<div class="bar"><i style="width:${Math.min(100,Math.round(100*(P.stepNo-1+Math.min(1,P.stepSet?(P.stepElapsed+ex)/P.stepSet:0))/P.steps))}%"></i></div>`:""}
+      <div class="stepl"><span>${esc(P.stepNo)}. ${esc(P.stepName||"")}</span><span>${esc(P.stepNo)}/${esc(P.steps||"?")}</span></div>
+      <div class="sub">Step ${dur(P.stepElapsed+ex)}${P.stepSet!=null?" of "+dur(P.stepSet):""} · running ${dur(P.runElapsed+ex)} (started ${hm(run.start)})${P.left!=null?` · about <b>${dur(Math.max(0,P.left-ex))}</b> left`:""}</div>
+      ${(P.on||[]).length?`<div class="chips">${P.on.map(o=>`<span class="chip">${esc(ON[o]||o)}</span>`).join("")}</div>`:""}
+      <div class="sub">Core max so far ${run.coreMax??"—"}°C</div></div>`
+    :run?`<div class="card status"><span class="pill run">Running</span><div class="prog">${esc(run.program)}</div>
       <div class="sub">${live.step?esc(live.step.name)+" · ":""}started ${hm(run.start)} · running ${dur((Date.now()-local(run.start))/60000)}</div>
       <div class="sub">Core max so far ${run.coreMax??"—"}°C</div></div>`
     :`<div class="card status"><span class="pill idle">Idle</span><div class="prog">${last?esc(last.program)+" finished":"No recent cycles"}</div>
       ${last?`<div class="sub">${dm(last.end)} ${hm(last.end)} · core max ${last.coreMax??"—"}°C</div>`:""}</div>`;
-  const tiles=`<div class="tiles"><div class="tile core"><div class="v">${L.core??"—"}</div><div class="l">Core °C</div></div>
-    <div class="tile ch"><div class="v">${L.ch??"—"}</div><div class="l">Chamber °C</div></div>
-    <div class="tile"><div class="v">${L.hum??"—"}</div><div class="l">Humidity %</div></div></div>
+  const S=(run&&live.set)||{};const setTxt=v=>v!=null&&v!==0?`<div class="s">set <b>${esc(v)}</b></div>`:`<div class="s">&nbsp;</div>`;
+  const tiles=`<div class="tiles"><div class="tile core"><div class="v">${L.core??"—"}</div>${setTxt(S.core)}<div class="l">Core °C</div></div>
+    <div class="tile ch"><div class="v">${L.ch??"—"}</div>${setTxt(S.ch)}<div class="l">Chamber °C</div></div>
+    <div class="tile"><div class="v">${L.hum??"—"}</div>${setTxt(S.hum)}<div class="l">Humidity %</div></div></div>
     ${L.t?`<p class="muted" style="margin:6px 2px 0">Reading at ${hm(L.t)}</p>`:""}`;
   const alarms=(live.alarms||[]).length?`<div class="card"><h2>Alarms · last 48 hours</h2><ul>${live.alarms.map(a=>`<li><span class="alarm">${esc(a.info)}${a.error?" ("+esc(a.error)+")":""}</span><span class="t">${dm(a.start)} ${hm(a.start)}</span></li>`).join("")}</ul></div>`:"";
   const recent=`<div class="card"><h2>Recent cycles</h2><ul>${cyc.map(c=>`<li><span>${esc(c.program)}</span><span class="t">${dm(c.start)} ${hm(c.start)}–${c.end?hm(c.end):"now"} · ${c.coreMax??"—"}°</span></li>`).join("")||`<li class="muted">None</li>`}</ul></div>`;
-  $("app").innerHTML=stale+status+tiles+`<div class="card"><h2>Last 6 hours</h2>${chart(live.series)}</div>`+alarms+recent;
+  const nxt=P&&(P.next||[]).length?`<div class="card"><h2>Steps still to come</h2><ul>${P.next.map(n=>`<li><span>${esc(n.n)}. ${esc(n.name)}</span><span class="t">${n.min!=null?dur(n.min):""}${n.ch!=null?" · "+esc(n.ch)+"°":""}</span></li>`).join("")}</ul></div>`:"";
+  const D=live.device;
+  const dev=D?`<details><summary>Smoker details</summary><dl><dt>Name</dt><dd>${esc(D.name)}</dd><dt>Hardware Id</dt><dd>${esc(D.hw)}</dd><dt>Address</dt><dd>${esc(D.ip)}</dd><dt>Hardware type</dt><dd>${esc(D.type)}</dd><dt>Version</dt><dd>${esc(D.ver)}</dd></dl></details>`:"";
+  $("app").innerHTML=stale+status+tiles+nxt+`<div class="card"><h2>Last 6 hours</h2>${chart(live.series)}</div>`+alarms+recent+dev;
 }
 
 let timer=null;
