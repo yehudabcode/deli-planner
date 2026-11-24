@@ -116,8 +116,8 @@ function saveRecord_(rec) {
 /* ---------- Smokehouse cooks (sent from Eli's PC by tools/FOODLOG-sync.ps1) ---------- */
 // FOOD.LOG analog channels: 1 = chamber °C, 2 = core °C, 3 = humidity % (checked against a FOOD.LOG PDF)
 const COOK_HEADERS = ['Event id', 'Start', 'End', 'Program', 'Recipe no', 'Completed', 'Error', 'Type',
-  'Chamber min', 'Chamber max', 'Core min', 'Core max', 'Humidity min', 'Humidity max', 'Readings', 'Synced'];
-function cooksSheet_() { return sheet_('Smokehouse', COOK_HEADERS); }
+  'Chamber min', 'Chamber max', 'Core min', 'Core max', 'Humidity min', 'Humidity max', 'Readings', 'Synced', 'Core hold (min at or above °C)'];
+function cooksSheet_() { const sh = sheet_('Smokehouse', COOK_HEADERS); if (sh.getRange(1, COOK_HEADERS.length).getValue() === '') sh.getRange(1, COOK_HEADERS.length).setValue(COOK_HEADERS[COOK_HEADERS.length - 1]); return sh; }
 function num_(v) { return v === '' || v == null || isNaN(Number(v)) ? null : Math.round(Number(v) * 10) / 10; }
 function saveCooks_(cooks) {
   const sh = cooksSheet_();
@@ -129,8 +129,10 @@ function saveCooks_(cooks) {
     if (!c || c.id == null) return;
     const row = [String(c.id), "'" + (c.start || ''), "'" + (c.end || ''), c.program || '', c.recipe == null ? '' : c.recipe, c.completed ? 'yes' : 'no',
       c.error == null ? '' : c.error, c.type == null ? '' : c.type,
-      num_(c.c1min), num_(c.c1max), num_(c.c2min), num_(c.c2max), num_(c.c3min), num_(c.c3max), c.n || 0, now];
+      num_(c.c1min), num_(c.c1max), num_(c.c2min), num_(c.c2max), num_(c.c3min), num_(c.c3max), c.n || 0, now, c.hold ? JSON.stringify(c.hold) : ''];
     const i = ids.indexOf(String(c.id));
+    // hold times are only worked out for the last 3 days: keep the stored ones for older cycles
+    if (i >= 0 && !c.hold) row[row.length - 1] = sh.getRange(i + 2, COOK_HEADERS.length).getValue();
     if (i >= 0) { sh.getRange(i + 2, 1, 1, row.length).setValues([row]); updated++; }
     else { sh.appendRow(row); ids.push(String(c.id)); added++; }
   });
@@ -145,7 +147,8 @@ function readCooks_(week) {
     .map(function (r) {
       return { eid: String(r[0]), start: String(r[1]), end: String(r[2]), name: String(r[3]), recipe: r[4], completed: r[5] === 'yes',
         error: r[6], type: r[7], chMin: num_(r[8]), chMax: num_(r[9]), coreMin: num_(r[10]), coreMax: num_(r[11]),
-        humMin: num_(r[12]), humMax: num_(r[13]), n: r[14], synced: r[15] ? Utilities.formatDate(new Date(r[15]), 'Europe/London', 'dd/MM/yyyy HH:mm') : '' };
+        humMin: num_(r[12]), humMax: num_(r[13]), n: r[14], synced: r[15] ? Utilities.formatDate(new Date(r[15]), 'Europe/London', 'dd/MM/yyyy HH:mm') : '',
+        hold: (function () { try { return r[16] ? JSON.parse(r[16]) : null; } catch (e) { return null; } })() };
     })
     .filter(function (c) { const d = c.start.slice(0, 10); return d >= from && d < to; })
     .sort(function (a, b) { return a.start.localeCompare(b.start); });

@@ -945,8 +945,9 @@ function chkInputs(key,i,r,rec,ctx){
   const v=rec.vals[i]||{}, c=r.chk||"";
   if(c==="cool8")return `<div class="chk"><label>Temp °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><span class="meta">must be ≤8°C</span></div>`;
   if(c.startsWith("program:")){const pn=c.slice(8),fl=v.fl,tg=coreTarget(ctx);
-    const flBox=fl?`<div class="flrep${(fl.coreMax!=null&&tg&&fl.coreMax<tg)||(fl.cover!=null&&fl.cover<90)?" bad":""}"><b>FOOD.LOG${fl.eid?"":" (PDF)"}:</b> ${esc(fl.name||"")} · ${esc(fl.start||"")} → ${esc((fl.end||"").slice(11))} · ${esc(fl.dur||"")}<br>
-      ${fl.cover!=null&&fl.cover<90?`<b class="warnx">⚠ FOOD.LOG only recorded ${fl.cover}% of the temperature readings for this cook. Core max below is not reliable.</b><br>`:""}Core max <b>${fl.coreMax??"—"}°C</b>${tg?` (target ${tg}°C for ${coreHold(ctx)} min)`:""} · Chamber max ${fl.chMax??"—"}°C · Humidity max ${fl.humMax??"—"}%${fl.url?` · <a href="${esc(fl.url)}" target="_blank" rel="noopener">PDF</a>`:""}</div>`:"";
+    const hm=holdMins(fl,tg),hn=coreHold(ctx);
+    const flBox=fl?`<div class="flrep${(fl.coreMax!=null&&tg&&fl.coreMax<tg)||(hm!=null&&hn&&hm<hn)||(fl.cover!=null&&fl.cover<90)?" bad":""}"><b>FOOD.LOG${fl.eid?"":" (PDF)"}:</b> ${esc(fl.name||"")} · ${esc(fl.start||"")} → ${esc((fl.end||"").slice(11))} · ${esc(fl.dur||"")}<br>
+      ${fl.cover!=null&&fl.cover<90?`<b class="warnx">⚠ FOOD.LOG only recorded ${fl.cover}% of the temperature readings for this cook. Core max below is not reliable.</b><br>`:""}Core max <b>${fl.coreMax??"—"}°C</b>${tg?` (target ${tg}°C for ${hn} min)`:""}${tg&&hm!=null?` · held ≥${tg}°C for <b>${hm} min</b>${hn&&hm<hn?" ⚠ too short":" ✓"}`:""} · Chamber max ${fl.chMax??"—"}°C · Humidity max ${fl.humMax??"—"}%${fl.url?` · <a href="${esc(fl.url)}" target="_blank" rel="noopener">PDF</a>`:""}</div>`:"";
     const opts=cooksFor(ctx.cookDate||ctx.date,fl&&fl.eid).map(c=>{const used=cookUsedBy(c.eid,key);
       return `<option value="${esc(c.eid)}"${fl&&fl.eid===c.eid?" selected":""}>${esc(c.start.slice(11,16))} ${esc(c.name)} · ${cookCover(c)<0.9?`⚠ temps ${Math.round(cookCover(c)*100)}% recorded`:`core max ${c.coreMax??"—"}°C`}${used?" · already used: "+esc(used):""}</option>`}).join("");
     const pick=localMode?"":`<label class="noprint">Smokehouse cycle <select data-cookfor="${esc(key)}" data-fli="${i}"><option value="">${opts?"— choose the FOOD.LOG cycle —":"No cycles synced for this day yet"}</option>${opts}</select></label>`;
@@ -973,7 +974,9 @@ function ukTime(iso){if(!iso)return "";const [d,t]=iso.split("T");return d.split
 function cookCover(c){const secs=c.end&&c.start?(new Date(c.end)-new Date(c.start))/1000:0;const exp=Math.max(1,Math.floor(secs/30));return Math.min(1,(+c.n||0)/exp)}
 function cookToFl(c){const mins=c.end&&c.start?Math.round((new Date(c.end)-new Date(c.start))/60000):null;
   return {eid:c.eid,src:"sync",name:c.name,recipe:c.recipe,start:ukTime(c.start),end:ukTime(c.end),dur:mins!=null?(mins>=120?`${Math.floor(mins/60)}:${String(mins%60).padStart(2,"0")} h`:`${mins} min`):"",
-    coreMin:c.coreMin,coreMax:c.coreMax,chMin:c.chMin,chMax:c.chMax,humMin:c.humMin,humMax:c.humMax,cover:Math.round(cookCover(c)*100)}}
+    coreMin:c.coreMin,coreMax:c.coreMax,chMin:c.chMin,chMax:c.chMax,humMin:c.humMin,humMax:c.humMax,cover:Math.round(cookCover(c)*100),hold:c.hold||null}}
+// minutes the core stayed at or above the target (from the FOOD.LOG sync); null if not known
+function holdMins(fl,tg){if(!fl||!fl.hold||!tg)return null;return fl.hold[String(Math.ceil(tg))]??0}
 function pickCook(key,i,eid){
   const rec=records[key];if(!rec)return;rec.vals[i]=rec.vals[i]||{};const v=rec.vals[i];
   if(!eid){if(v.fl&&v.fl.eid)delete v.fl}
@@ -1037,7 +1040,8 @@ function flagsOf(rec,rows){
     if(r.chk==="cool8"&&v.t!==undefined&&v.t!==""&&+v.t>8)f.push(`${r.ing}: ${v.t}°C is over 8°C`+(rec.note?"":" (note needed)"));
     if(r.chk==="core"&&v.t!==undefined&&v.t!==""&&+v.t<56)f.push(`Sous vide core ${v.t}°C is below the 56°C target`);
     if(r.chk&&r.chk.startsWith("program:")&&v.fl&&v.fl.cover!=null&&v.fl.cover<90)f.push(`FOOD.LOG recorded only ${v.fl.cover}% of the temperatures for this cook. Record the core temp by hand probe`);
-    if(r.chk&&r.chk.startsWith("program:")&&v.fl&&v.fl.coreMax!=null&&!(v.fl.cover!=null&&v.fl.cover<90)){const tg=coreTarget(rec);if(tg&&v.fl.coreMax<tg)f.push(`Smokehouse core max ${v.fl.coreMax}°C is below the ${tg}°C target`)}
+    if(r.chk&&r.chk.startsWith("program:")&&v.fl&&v.fl.coreMax!=null&&!(v.fl.cover!=null&&v.fl.cover<90)){const tg=coreTarget(rec);if(tg&&v.fl.coreMax<tg)f.push(`Smokehouse core max ${v.fl.coreMax}°C is below the ${tg}°C target`);
+      const hm=holdMins(v.fl,tg),need=coreHold(rec);if(tg&&hm!=null&&need&&hm<need&&v.fl.coreMax>=tg)f.push(`Core was at ${tg}°C or above for only ${hm} min (needs ${need} min)`)}
   });
   return f;
 }
