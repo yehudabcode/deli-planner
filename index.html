@@ -960,7 +960,7 @@ function chkInputs(key,i,r,rec,ctx){
 /* Core temperature targets from Eli (24 Nov 2026, "Programmes requiring validation"): [°C, hold minutes].
    Pass/fail is checked on FOOD.LOG core max; the hold time is shown but not yet checked automatically. */
 const CORE_TARGET={roast_beef:[72,2],franks:[72,6],beef_salami:[73,6],turkey_salami:[73,6],chicken_salami:[73,6],
-  chicken_breast:[68,10],hungarian:[60,30],chorizo:[65,45],bratwurst:[73,6],double_smoked:[73,10],pastrami:[70,10],
+  chicken_breast:[68,10],hungarian:[60,45],chorizo:[65,45],bratwurst:[73,6],double_smoked:[73,10],pastrami:[70,10],
   kielbasa:[65,15],liverwurst:[80,15]};
 function coreRule(x){const id=x&&x.pid;if(!id)return null;return CORE_TARGET[id+"|"+(x.stage||"")]??CORE_TARGET[id]??null}
 function coreTarget(x){const r=coreRule(x);return r?r[0]:null}
