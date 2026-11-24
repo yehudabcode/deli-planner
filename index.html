@@ -946,18 +946,24 @@ function chkInputs(key,i,r,rec,ctx){
   if(c==="cool8")return `<div class="chk"><label>Temp °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1" inputmode="decimal"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><span class="meta">must be ≤8°C</span></div>`;
   if(c.startsWith("program:")){const pn=c.slice(8),fl=v.fl,tg=coreTarget(ctx);
     const flBox=fl?`<div class="flrep${(fl.coreMax!=null&&tg&&fl.coreMax<tg)||(fl.cover!=null&&fl.cover<90)?" bad":""}"><b>FOOD.LOG${fl.eid?"":" (PDF)"}:</b> ${esc(fl.name||"")} · ${esc(fl.start||"")} → ${esc((fl.end||"").slice(11))} · ${esc(fl.dur||"")}<br>
-      ${fl.cover!=null&&fl.cover<90?`<b class="warnx">⚠ FOOD.LOG only recorded ${fl.cover}% of the temperature readings for this cook. Core max below is not reliable.</b><br>`:""}Core max <b>${fl.coreMax??"—"}°C</b>${tg?` (target ${tg}°C)`:""} · Chamber max ${fl.chMax??"—"}°C · Humidity max ${fl.humMax??"—"}%${fl.url?` · <a href="${esc(fl.url)}" target="_blank" rel="noopener">PDF</a>`:""}</div>`:"";
+      ${fl.cover!=null&&fl.cover<90?`<b class="warnx">⚠ FOOD.LOG only recorded ${fl.cover}% of the temperature readings for this cook. Core max below is not reliable.</b><br>`:""}Core max <b>${fl.coreMax??"—"}°C</b>${tg?` (target ${tg}°C for ${coreHold(ctx)} min)`:""} · Chamber max ${fl.chMax??"—"}°C · Humidity max ${fl.humMax??"—"}%${fl.url?` · <a href="${esc(fl.url)}" target="_blank" rel="noopener">PDF</a>`:""}</div>`:"";
     const opts=cooksFor(ctx.cookDate||ctx.date,fl&&fl.eid).map(c=>{const used=cookUsedBy(c.eid,key);
       return `<option value="${esc(c.eid)}"${fl&&fl.eid===c.eid?" selected":""}>${esc(c.start.slice(11,16))} ${esc(c.name)} · ${cookCover(c)<0.9?`⚠ temps ${Math.round(cookCover(c)*100)}% recorded`:`core max ${c.coreMax??"—"}°C`}${used?" · already used: "+esc(used):""}</option>`}).join("");
     const pick=localMode?"":`<label class="noprint">Smokehouse cycle <select data-cookfor="${esc(key)}" data-fli="${i}"><option value="">${opts?"— choose the FOOD.LOG cycle —":"No cycles synced for this day yet"}</option>${opts}</select></label>`;
-    return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label>${pick}${localMode?"":`<button type="button" class="wbtn noprint" data-flup="${esc(key)}" data-fli="${i}">${fl&&!fl.eid?"Replace":"Upload"} PDF instead</button>`}</div>${flBox}`}
+    return `<div class="chk"><label>FOOD.LOG program ${inp(key,"vals."+i+".prog",v.prog??pn,'type="text" class="wide"')}</label><label>Start ${inp(key,"vals."+i+".start",v.start,'type="time"')}</label>${tg?`<span class="meta"><b>Core ≥${tg}°C for ${coreHold(ctx)} min</b></span>`:""}${pick}${localMode?"":`<button type="button" class="wbtn noprint" data-flup="${esc(key)}" data-fli="${i}">${fl&&!fl.eid?"Replace":"Upload"} PDF instead</button>`}</div>${flBox}`}
   if(c==="weight")return `<div class="chk"><label>Weight after kg ${inp(key,"vals."+i+".kg",v.kg,'type="number" step="0.1" inputmode="decimal"')}</label>${ctx.target?`<span class="meta">target ${fmt(ctx.target)} kg</span>`:""}</div>`;
   if(c==="core")return `<div class="chk"><label>Core reached °C ${inp(key,"vals."+i+".t",v.t,'type="number" step="0.1"')}</label><label>Time ${inp(key,"vals."+i+".time",v.time,'type="time"')}</label><label>An hour later °C ${inp(key,"vals."+i+".t2",v.t2,'type="number" step="0.1"')}</label></div>`;
   return "";
 }
 /* Smokehouse core temperature targets (°C) by product id, and optionally "id|Stage". Eli to confirm; blank = no pass/fail check. */
-const CORE_TARGET={};
-function coreTarget(x){const id=x&&x.pid;if(!id)return null;return CORE_TARGET[id+"|"+(x.stage||"")]??CORE_TARGET[id]??null}
+/* Core temperature targets from Eli (24 Nov 2026, "Programmes requiring validation"): [°C, hold minutes].
+   Pass/fail is checked on FOOD.LOG core max; the hold time is shown but not yet checked automatically. */
+const CORE_TARGET={roast_beef:[72,2],franks:[72,6],beef_salami:[73,6],turkey_salami:[73,6],chicken_salami:[73,6],
+  chicken_breast:[68,10],hungarian:[60,30],chorizo:[65,45],bratwurst:[73,6],double_smoked:[73,10],pastrami:[70,10],
+  kielbasa:[65,15],liverwurst:[80,15]};
+function coreRule(x){const id=x&&x.pid;if(!id)return null;return CORE_TARGET[id+"|"+(x.stage||"")]??CORE_TARGET[id]??null}
+function coreTarget(x){const r=coreRule(x);return r?r[0]:null}
+function coreHold(x){const r=coreRule(x);return r?r[1]:null}
 let cooks=[];
 async function loadCooks(wk){if(localMode)return;try{const j=await api("cooks",{week:wk});if(wk===weekId)cooks=Array.isArray(j.cooks)?j.cooks:[]}catch(e){}}
 const isCleaningName=n=>/CLEAN|RINS|TEST/i.test(n||"");
