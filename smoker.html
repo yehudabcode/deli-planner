@@ -138,10 +138,11 @@ async function load(){
     if(!j.live){$("app").innerHTML=`<div class="card muted">No smoker data yet. The live feed on Eli's PC hasn't sent anything.</div>`}
     else render(j.live);
   }catch(e){$("upd").textContent="can't reach the planner, retrying…"}
-  timer=setTimeout(load,60000);
+  // refresh every minute only while the page is on screen; it reloads as soon as it is opened again
+  if(!document.hidden)timer=setTimeout(load,60000);
 }
 $("setup").onclick=e=>{e.preventDefault();showSetup()};
-document.addEventListener("visibilitychange",()=>{if(!document.hidden)load()});
+document.addEventListener("visibilitychange",()=>{if(document.hidden)clearTimeout(timer);else load()});
 load();
 </script>
 </body>
