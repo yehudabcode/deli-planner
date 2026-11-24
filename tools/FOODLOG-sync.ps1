@@ -54,17 +54,17 @@ ORDER BY e.Id, m.TimeStamp
     foreach ($r in $tc.Rows) { $k = [int]$r.Id; if (-not $byId.ContainsKey($k)) { $byId[$k] = New-Object System.Collections.Generic.List[object] }; $byId[$k].Add(@([datetime]$r.TimeStamp, [double]$r.Value)) }
     foreach ($k in $byId.Keys) {
         $rd = $byId[$k]; $res = [ordered]@{}
-        for ($T = 55; $T -le 90; $T++) {
+        for ($thr = 55; $thr -le 90; $thr++) {
             $best = 0.0; $runStart = $null; $prev = $null
             foreach ($p in $rd) {
-                $ok = $p[1] -ge $T
+                $ok = $p[1] -ge $thr
                 if ($ok -and $runStart -ne $null -and $prev -ne $null -and ($p[0] - $prev).TotalSeconds -gt 90) { $runStart = $null }
                 if ($ok) { if ($runStart -eq $null) { $runStart = $p[0] }; $len = ($p[0] - $runStart).TotalMinutes + 0.5; if ($len -gt $best) { $best = $len } }
                 else { $runStart = $null }
                 $prev = $p[0]
             }
             if ($best -le 0) { break }
-            $res["$T"] = [math]::Round($best, 1)
+            $res["$thr"] = [math]::Round($best, 1)
         }
         $holds[$k] = $res
     }
